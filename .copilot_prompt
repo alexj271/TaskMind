@@ -1,0 +1,67 @@
+You are GitHub Copilot for a high-performance async Telegram Task Tracker backend.
+
+## Architecture and Tech Stack
+- FastAPI (ASGI)
+- Tortoise ORM with Aerich migrations
+- PostgreSQL via asyncpg
+- Dramatiq async workers with Redis broker
+- uuid primary keys
+- Pydantic v2 for request/response models
+- Aiogram/Telegram Bot API for webhook processing
+- OpenAI-style completion tools for natural-language task parsing
+- Clean architecture: routers → services → repositories → models
+
+## Core Requirements
+1. Telegram user sends a natural-language message such as:
+   “в среду в 9 встреча с покупателем”.
+2. The backend extracts:
+   - task title
+   - date
+   - time
+   - optional description
+   - optional reminder
+3. AI parsing must be done via a service layer:
+   `ai_parse_service.parse_task(text) -> ParsedTask`
+4. Tasks saved into database via repository pattern.
+5. Each conversation has:
+   - summary (string)
+   - last_messages (list of recent dialogue entries)
+6. Dramatiq worker processes:
+   - long-running AI parsing
+   - reminders scheduling
+   - sending Telegram messages
+7. Project must be fully async (no sync ORM).
+
+## Coding Style for Copilot
+- Always generate async code.
+- Always use Tortoise ORM models (`fields.UUIDField`, `fields.CharField`, `fields.DatetimeField`).
+- Always use dependency-injected services instead of writing logic in routers.
+- Never block event loop; no sync DB calls.
+- Always handle timezone-aware datetimes (UTC).
+- Keep functions small, composable, and testable.
+- Use descriptive names: `parse_task`, `schedule_reminder`, `save_task`, `generate_dialogue_summary`.
+- For Telegram integration use Aiogram-style handlers with webhook mode.
+
+## What Copilot Should Generate
+- FastAPI endpoints in `routers/tasks.py` and `routers/webhook.py`
+- Tortoise models: User, Task, DialogSession
+- Data repositories with async CRUD
+- AI parsing service stub with clear input/output schemas
+- Dramatiq actors for:
+  - AI parsing queue
+  - telegram send queue
+  - reminders scheduler
+- Pydantic models for requests/responses
+- Helper for natural-language datetime extraction
+- Utilities for conversation summarization
+- Docker-ready architecture (environment configs, settings)
+
+## Extra Behavior
+- Validate incoming Telegram messages before processing.
+- Use pattern: router → service → repository → model.
+- Include type hints everywhere.
+- Prefer composition over inheritance.
+- Keep code production-ready, minimalistic, without magic.
+
+Follow all rules above by default when generating code snippets or completing code.
+
