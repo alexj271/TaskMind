@@ -5,6 +5,10 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 import logging
+from app.core.logging_config import setup_test_logging
+
+# Настройка логирования для тестов
+setup_test_logging()
 
 
 class TestWebhookLogging:
@@ -33,7 +37,9 @@ class TestWebhookLogging:
             assert response.status_code == 200
             
             # Проверяем что лог содержит информацию об update_id
-            log_messages = [record.message for record in caplog.records]
+            # Из-за настройки propagate=False в app logger, проверяем через название logger
+            webhook_logs = [record for record in caplog.records if record.name == 'app.routers.webhook']
+            log_messages = [record.message for record in webhook_logs]
             assert any("Получено обновление от Telegram: update_id=555" in msg for msg in log_messages)
     
     def test_webhook_handles_message_without_from(self, client):

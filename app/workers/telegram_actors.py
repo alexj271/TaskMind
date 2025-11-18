@@ -9,6 +9,10 @@ from typing import Dict, Any
 from app.core.dramatiq_setup import redis_broker
 from app.services.openai_tools import OpenAIService
 from app.core.config import settings
+from app.core.logging_config import setup_logging
+
+# Настраиваем логирование при инициализации модуля
+setup_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +65,8 @@ def process_telegram_message(update_id: int, message_data: Dict[str, Any]):
         raise  # Позволяем Dramatiq обработать retry логику
 
 
-@dramatiq.actor(broker=redis_broker, max_retries=2, min_backoff=2000, max_backoff=60000)
-def parse_and_create_task(user_id: int, chat_id: int, message_text: str, user_name: str):
+# Базовая функция для тестирования без Dramatiq декораторов
+async def _parse_and_create_task_impl(user_id: int, chat_id: int, message_text: str, user_name: str):
     """
     Парсит текст сообщения и создает задачу с помощью AI.
     
@@ -75,8 +79,8 @@ def parse_and_create_task(user_id: int, chat_id: int, message_text: str, user_na
     try:
         logger.info(f"Парсим задачу для пользователя {user_name} (ID: {user_id})")
         
-        # Используем OpenAI для парсинга
-        parsed_task = openai_service.parse_task(message_text)
+        # Используем OpenAI для парсинга (теперь корректно с await)
+        parsed_task = await openai_service.parse_task(message_text)
         
         if parsed_task:
             logger.info(f"Задача успешно распарсена: {parsed_task.title}")
@@ -84,13 +88,23 @@ def parse_and_create_task(user_id: int, chat_id: int, message_text: str, user_na
             # TODO: Сохранить задачу в базе данных
             # TODO: Отправить подтверждение пользователю в Telegram
             
-            # Планируем напоминание если есть дедлайн
-            if parsed_task.deadline:
+            # Планируем напоминание если есть запланированное время
+            if parsed_task.scheduled_at:
+                # Используем scheduled_at как timestamp для Dramatiq
+                scheduled_timestamp = int(parsed_task.scheduled_at.timestamp())
                 schedule_task_reminder.send_with_options(
-                    args=(user_id, chat_id, parsed_task.title, parsed_task.deadline),
-                    eta=parsed_task.deadline
+                    args=(user_id, chat_id, parsed_task.title, scheduled_timestamp),
+                    eta=scheduled_timestamp  # Передаем timestamp, а не datetime
                 )
-                logger.info(f"Запланировано напоминание о задаче '{parsed_task.title}' на {parsed_task.deadline}")
+                logger.info(f"Запланировано напоминание о задаче '{parsed_task.title}' на {parsed_task.scheduled_at}")
+            elif parsed_task.reminder_at:
+                # Используем reminder_at как timestamp для Dramatiq  
+                reminder_timestamp = int(parsed_task.reminder_at.timestamp())
+                schedule_task_reminder.send_with_options(
+                    args=(user_id, chat_id, parsed_task.title, reminder_timestamp),
+                    eta=reminder_timestamp  # Передаем timestamp, а не datetime
+                )
+                logger.info(f"Запланировано напоминание о задаче '{parsed_task.title}' на {parsed_task.reminder_at}")
             
         else:
             logger.warning(f"Не удалось распарсить задачу из текста: '{message_text[:100]}...'")
@@ -100,6 +114,13 @@ def parse_and_create_task(user_id: int, chat_id: int, message_text: str, user_na
         logger.error(f"Ошибка парсинга задачи для пользователя {user_id}: {str(e)}")
         # TODO: отправить сообщение пользователю об ошибке
         raise
+
+
+# Dramatiq actor, который оборачивает базовую функцию
+@dramatiq.actor(broker=redis_broker, max_retries=2, min_backoff=2000, max_backoff=60000)
+async def parse_and_create_task(user_id: int, chat_id: int, message_text: str, user_name: str):
+    """Dramatiq actor для парсинга задач."""
+    return await _parse_and_create_task_impl(user_id, chat_id, message_text, user_name)
 
 
 @dramatiq.actor(broker=redis_broker, max_retries=1)

@@ -12,12 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 pytest_plugins = ("pytest_asyncio",)
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Создает event loop для всей сессии тестов"""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Убираем кастомную event_loop фикстуру, используем стандартную из pytest-asyncio
 
 
 # Пометки для группировки тестов

@@ -4,10 +4,14 @@
 """
 
 import pytest
+import asyncio
 from unittest.mock import Mock, patch, AsyncMock
+# Импортируем настройку dramatiq перед импортом actors
+from app.core.dramatiq_setup import redis_broker
 from app.workers.telegram_actors import (
     process_telegram_message, 
     parse_and_create_task, 
+    _parse_and_create_task_impl,
     schedule_task_reminder,
     send_telegram_message
 )
@@ -94,47 +98,52 @@ class TestTelegramActors:
         # Мокируем parsed task
         mock_task = Mock()
         mock_task.title = "Купить продукты"
-        mock_task.deadline = None
+        mock_task.scheduled_at = None
+        mock_task.reminder_at = None
         
-        mock_openai_service.parse_task.return_value = mock_task
+        # Мокируем async метод
+        mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
         
         with patch('app.workers.telegram_actors.schedule_task_reminder') as mock_reminder:
             mock_reminder.send_with_options = Mock()
             
-            # Вызываем actor
-            parse_and_create_task(
+            # Вызываем базовую функцию напрямую
+            asyncio.run(_parse_and_create_task_impl(
                 user_id=123456,
                 chat_id=123456,
                 message_text="Купить продукты сегодня",
                 user_name="Тест"
-            )
+            ))
             
             # Проверяем что OpenAI был вызван
             mock_openai_service.parse_task.assert_called_once_with("Купить продукты сегодня")
             
-            # Напоминание не должно быть запланировано (нет дедлайна)
+            # Напоминание не должно быть запланировано (нет запланированного времени)
             mock_reminder.send_with_options.assert_not_called()
     
     @patch('app.workers.telegram_actors.openai_service')
     def test_parse_and_create_task_with_deadline(self, mock_openai_service):
         """Тест парсинга задачи с дедлайном."""
-        # Мокируем parsed task с дедлайном
+        # Мокируем parsed task с запланированным временем
+        from datetime import datetime
         mock_task = Mock()
         mock_task.title = "Сдать отчет"
-        mock_task.deadline = 1640995200  # Timestamp
+        mock_task.scheduled_at = datetime.fromtimestamp(1640995200)
+        mock_task.reminder_at = None
         
-        mock_openai_service.parse_task.return_value = mock_task
+        # Мокируем async метод
+        mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
         
         with patch('app.workers.telegram_actors.schedule_task_reminder') as mock_reminder:
             mock_reminder.send_with_options = Mock()
             
-            # Вызываем actor
-            parse_and_create_task(
+            # Вызываем базовую функцию напрямую
+            asyncio.run(_parse_and_create_task_impl(
                 user_id=123456,
                 chat_id=123456,
                 message_text="Сдать отчет до завтра",
                 user_name="Тест"
-            )
+            ))
             
             # Проверяем что напоминание запланировано
             mock_reminder.send_with_options.assert_called_once_with(
@@ -145,18 +154,19 @@ class TestTelegramActors:
     @patch('app.workers.telegram_actors.openai_service')
     def test_parse_and_create_task_parsing_failed(self, mock_openai_service):
         """Тест когда парсинг задачи не удался."""
-        mock_openai_service.parse_task.return_value = None
+        # Мокируем async метод возвращающий None
+        mock_openai_service.parse_task = AsyncMock(return_value=None)
         
         with patch('app.workers.telegram_actors.schedule_task_reminder') as mock_reminder:
             mock_reminder.send_with_options = Mock()
             
-            # Вызываем actor
-            parse_and_create_task(
+            # Вызываем базовую функцию напрямую
+            asyncio.run(_parse_and_create_task_impl(
                 user_id=123456,
                 chat_id=123456,
                 message_text="Неясное сообщение",
                 user_name="Тест"
-            )
+            ))
             
             # Напоминание не должно быть запланировано
             mock_reminder.send_with_options.assert_not_called()

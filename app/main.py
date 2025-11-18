@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.core.db import init_db
 from app.routers import tasks, webhook
+from app.core.logging_config import setup_logging
+
+# Настраиваем логирование при запуске приложения
+setup_logging()
 
 
 @asynccontextmanager

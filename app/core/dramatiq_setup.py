@@ -6,6 +6,7 @@
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.middleware import CurrentMessage, Callbacks
+from dramatiq.middleware.asyncio import AsyncIO
 import logging
 from app.core.config import settings
 
@@ -20,8 +21,9 @@ redis_broker = RedisBroker(
 )
 
 # Добавляем middleware для логирования и обработки ошибок
+redis_broker.add_middleware(AsyncIO())  # Для поддержки async actors
 redis_broker.add_middleware(CurrentMessage())
-redis_broker.add_middleware(Callbacks())
+# Callbacks middleware добавляется автоматически, не добавляем дублирующий
 
 # Устанавливаем брокер как глобальный
 dramatiq.set_broker(redis_broker)

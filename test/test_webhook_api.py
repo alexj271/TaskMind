@@ -120,6 +120,7 @@ class TestTasksAPI:
 class TestAsyncAPI:
     """Асинхронные тесты API с httpx"""
     
+    @pytest.mark.asyncio
     async def test_webhook_with_async_client(self):
         """Тест: асинхронный запрос к webhook"""
         from httpx import ASGITransport
@@ -141,6 +142,7 @@ class TestAsyncAPI:
             data = response.json()
             assert data["status"] == "ok"
     
+    @pytest.mark.asyncio
     async def test_multiple_concurrent_webhook_requests(self):
         """Тест: множественные одновременные запросы к webhook"""
         from httpx import ASGITransport
