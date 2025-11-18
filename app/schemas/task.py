@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
 import uuid
@@ -13,11 +13,10 @@ class ParsedTask(BaseModel):
     reminder_at: Optional[datetime] = None
 
 class TaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     title: str
     description: Optional[str]
     scheduled_at: Optional[datetime]
     reminder_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True

@@ -107,7 +107,9 @@ class TestAPIPerformance:
     @pytest.mark.asyncio
     async def test_async_client_performance(self):
         """Тест производительности с асинхронным клиентом."""
-        async with httpx.AsyncClient(app=app, base_url="http://test") as async_client:
+        # Используем ASGITransport для тестирования FastAPI приложения
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as async_client:
             
             # Тестируем несколько быстрых запросов
             tasks = []

@@ -46,9 +46,11 @@ rsync -avz --delete \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
     --exclude='.pytest_cache' \
-    --exclude='test/' \
     --exclude='.venv' \
     --exclude='deploy/' \
+    --exclude='*.log' \
+    --exclude='.coverage' \
+    --exclude='htmlcov/' \
     ../ $DEPLOY_SERVER:$DEPLOY_PATH/
 
 # Проверка успешного копирования ключевых файлов
@@ -211,8 +213,44 @@ ssh $DEPLOY_SERVER "
     netstat -tlnp | grep -E ':80|:8000|:6379|:5432'
 "
 
+# Запуск тестов на продакшене
+echo "🧪 Запуск тестов на продакшене..."
+ssh $DEPLOY_SERVER "
+    cd $DEPLOY_PATH
+    source venv/bin/activate
+    
+    echo 'Запуск быстрых тестов (исключая медленные интеграционные тесты)...'
+    python -m pytest test/ -v --tb=short -x -m 'not slow' || echo 'Некоторые тесты не прошли, но деплой продолжается'
+    
+    echo 'Проверка критически важных компонентов...'
+    export PYTHONPATH=$DEPLOY_PATH:\$PYTHONPATH
+    python -c \"
+import asyncio
+import sys
+sys.path.insert(0, '$DEPLOY_PATH')
+from app.services.openai_tools import OpenAIService
+from app.core.db import init_db
+print('✅ Импорты успешны')
+
+async def test_basic():
+    try:
+        await init_db()
+        print('✅ База данных подключена')
+    except Exception as e:
+        print(f'⚠️ Проблема с БД: {e}')
+        
+    try:
+        service = OpenAIService()
+        print('✅ OpenAI сервис инициализирован')
+    except Exception as e:
+        print(f'⚠️ Проблема с OpenAI: {e}')
+
+asyncio.run(test_basic())
+\" || echo 'Проблемы с базовой проверкой'
+"
+
 # Финальная проверка API
-echo "🧪 Тестирование API..."
+echo "🌐 Тестирование API через HTTP..."
 sleep 5  # Ждем запуска
 if curl -s -k "https://visitbot.ru/docs" > /dev/null; then
     echo "✅ API успешно отвечает на https://visitbot.ru/docs"
