@@ -235,24 +235,24 @@ class TestOpenAIIntegration:
         assert task2.reminder_at == now
 
 
-if __name__ == "__main__":
-    # Для ручного запуска тестов
-    import asyncio
-    
-    async def manual_test():
-        """Ручной тест для отладки"""
-        if not settings.openai_api_key or settings.openai_api_key == "TEST_TOKEN":
-            print("❌ Установите OPENAI_API_KEY для тестирования")
-            return
-            
+    @pytest.mark.requires_api_key
+    @pytest.mark.skipif(
+        not settings.openai_api_key or settings.openai_api_key == "TEST_TOKEN",
+        reason="Нужен реальный OPENAI_API_KEY для интеграционного теста"
+    )
+    @pytest.mark.asyncio
+    async def test_manual_openai_integration(self):
+        """Ручной тест для отладки OpenAI интеграции"""
         print("🤖 Тестируем OpenAI интеграцию...")
         
         # Простой чат
         response = await chat("Скажи привет!")
         print(f"Чат: {response}")
+        assert isinstance(response, str)
+        assert len(response) > 0
         
         # Парсинг задачи
         parsed = await parse_task("завтра встреча с клиентом в 10 утра")
         print(f"Парсинг: {parsed}")
-    
-    asyncio.run(manual_test())
+        assert isinstance(parsed, ParsedTask)
+        assert parsed.title is not None

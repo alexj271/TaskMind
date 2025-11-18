@@ -7,61 +7,117 @@ You are GitHub Copilot for a high-performance async Telegram Task Tracker backen
 - Dramatiq async workers with Redis broker
 - uuid primary keys
 - Pydantic v2 for request/response models
-- Aiogram/Telegram Bot API for webhook processing
+- Telegram Bot API webhook processing
 - OpenAI-style completion tools for natural-language task parsing
-- Clean architecture: routers → services → repositories → models
+- Worker-based architecture with specialized processors
+
+## Worker Architecture
+Each worker is a package with standardized structure:
+```
+workers/
+├── gatekeeper/          # First message processor
+│   ├── __init__.py
+│   ├── models.py        # Pydantic models for this worker
+│   ├── api.py          # REST API endpoints for this worker
+│   ├── tasks.py        # Dramatiq actors/tasks
+│   ├── tests.py        # Worker-specific tests
+│   └── prompts/        # AI prompts directory
+│       ├── classify.md
+│       └── parse.md
+├── chat/               # General chat processor
+│   ├── models.py
+│   ├── api.py
+│   ├── tasks.py
+│   ├── tests.py
+│   └── prompts/
+└── scheduler/          # Task scheduling worker
+    └── ...
+```
+
+## Message Flow Architecture
+1. **Gatekeeper Worker** (Entry Point):
+   - Receives all webhook messages first
+   - Logs message history to database
+   - Uses AI to classify: "new task" vs "general chat"
+   - If task → creates Task in DB + sends Telegram response
+   - If chat → forwards message to Chat Worker
+   
+2. **Chat Worker** (Conversational):
+   - Processes general conversation messages
+   - Uses AI for natural dialogue
+   - Sends response back to Telegram
+   - No task creation, pure chat interaction
 
 ## Core Requirements
-1. Telegram user sends a natural-language message such as:
-   “в среду в 9 встреча с покупателем”.
-2. The backend extracts:
-   - task title
-   - date
-   - time
-   - optional description
-   - optional reminder
-3. AI parsing must be done via a service layer:
-   `ai_parse_service.parse_task(text) -> ParsedTask`
-4. Tasks saved into database via repository pattern.
-5. Each conversation has:
-   - summary (string)
-   - last_messages (list of recent dialogue entries)
-6. Dramatiq worker processes:
-   - long-running AI parsing
-   - reminders scheduling
-   - sending Telegram messages
-7. Project must be fully async (no sync ORM).
+1. **Webhook Processing**: All Telegram messages → `/webhook/telegram` → Gatekeeper Worker
+2. **Message Chain**: Gatekeeper → (AI Classification) → Task Creation OR Chat Worker
+3. **Gatekeeper Worker Responsibilities**:
+   - Store message history: `MessageHistory(user_id, message_text, timestamp)`
+   - AI Classification: `classify_message(text) -> "task" | "chat"`
+   - Task Creation: Extract title, date, time, description, reminder
+   - Telegram Response: Send confirmation or forward to Chat Worker
+4. **Chat Worker Responsibilities**:
+   - Process non-task messages for general conversation
+   - AI-powered natural dialogue responses
+   - Direct Telegram response without task creation
+5. **Database Models**:
+   - `MessageHistory` (all incoming messages)
+   - `Task` (parsed and confirmed tasks)
+   - `User` (Telegram user data)
+6. **AI Services**:
+   - `classify_message_service.classify(text) -> MessageType`
+   - `parse_task_service.parse(text) -> ParsedTask`
+   - `chat_service.generate_response(text, history) -> ChatResponse`
+7. Project must be fully async with proper worker separation.
 
 ## Coding Style for Copilot
-- Always generate async code.
-- Always use Tortoise ORM models (`fields.UUIDField`, `fields.CharField`, `fields.DatetimeField`).
-- Always use dependency-injected services instead of writing logic in routers.
-- Never block event loop; no sync DB calls.
-- Always handle timezone-aware datetimes (UTC).
-- Keep functions small, composable, and testable.
-- Use descriptive names: `parse_task`, `schedule_reminder`, `save_task`, `generate_dialogue_summary`.
-- For Telegram integration use Aiogram-style handlers with webhook mode.
+- Always generate async code with proper Dramatiq actors
+- Use Tortoise ORM models (`fields.UUIDField`, `fields.CharField`, `fields.DatetimeField`)
+- Follow worker package structure: models.py, api.py, tasks.py, tests.py, prompts/
+- Never block event loop; no sync DB calls
+- Always handle timezone-aware datetimes (UTC)
+- Keep functions small, composable, and testable
+- Use descriptive names: `classify_message`, `parse_task`, `generate_chat_response`
+- Each worker should be self-contained with its own API endpoints
+- Use dependency injection for services within workers
 
 ## What Copilot Should Generate
-- FastAPI endpoints in `routers/tasks.py` and `routers/webhook.py`
-- Tortoise models: User, Task, DialogSession
-- Data repositories with async CRUD
-- AI parsing service stub with clear input/output schemas
-- Dramatiq actors for:
-  - AI parsing queue
-  - telegram send queue
-  - reminders scheduler
-- Pydantic models for requests/responses
-- Helper for natural-language datetime extraction
-- Utilities for conversation summarization
-- Docker-ready architecture (environment configs, settings)
+**Worker Structure:**
+- `workers/gatekeeper/` - Entry point worker with classification
+- `workers/chat/` - Conversational AI worker  
+- Each worker contains: models.py, api.py, tasks.py, tests.py, prompts/
+
+**Core Models:**
+- `MessageHistory` - All incoming Telegram messages
+- `Task` - Parsed and confirmed tasks
+- `User` - Telegram user profiles
+
+**Services by Worker:**
+- Gatekeeper: message classification, task parsing, history logging
+- Chat: conversation AI, response generation
+- Shared: Telegram API client, database repositories
+
+**Dramatiq Tasks:**
+- `gatekeeper.tasks.process_webhook_message` - Main entry point
+- `gatekeeper.tasks.create_task_from_message` - Task creation
+- `chat.tasks.generate_chat_response` - Chat processing
+- `shared.tasks.send_telegram_message` - Telegram sender
 
 ## Extra Behavior
-- Validate incoming Telegram messages before processing.
-- Use pattern: router → service → repository → model.
-- Include type hints everywhere.
-- Prefer composition over inheritance.
-- Keep code production-ready, minimalistic, without magic.
+- **Worker Isolation**: Each worker handles its own domain (gatekeeper=routing, chat=conversation)
+- **Message Flow**: webhook → gatekeeper → (classification) → task creation OR chat worker
+- **AI Prompt Management**: Store prompts in `workers/{worker}/prompts/*.md` files
+- **Database Consistency**: All message history logged before processing
+- **Error Handling**: Failed classifications should default to chat worker
+- **Testing**: Each worker has comprehensive tests in its tests.py
+- **Type Safety**: Full type hints for all worker interfaces
+- **Production Ready**: Workers should handle high message volume efficiently
+
+## Worker Communication Patterns
+- **Gatekeeper → Chat**: Via Dramatiq task queue with message context
+- **All → Telegram**: Via shared `send_telegram_message` task
+- **Database**: Shared models but worker-specific business logic
+- **AI Services**: Worker-specific prompts and specialized AI calls
 
 Follow all rules above by default when generating code snippets or completing code.
 

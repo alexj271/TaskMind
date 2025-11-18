@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import logging
-from app.workers.telegram_actors import process_telegram_message
+from app.workers.gatekeeper.tasks import process_webhook_message
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,8 +57,8 @@ async def telegram_webhook(update: TelegramUpdate):
         if update.message:
             logger.info(f"Сообщение от пользователя {update.message.from_.id if update.message.from_ else 'неизвестен'}: {update.message.text or 'без текста'}")
             
-            # Отправляем сообщение в очередь для асинхронной обработки
-            process_telegram_message.send(
+            # Отправляем сообщение в Gatekeeper для классификации и обработки
+            process_webhook_message.send(
                 update_id=update.update_id,
                 message_data=update.message.model_dump()
             )

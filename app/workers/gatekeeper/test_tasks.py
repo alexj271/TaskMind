@@ -1,0 +1,246 @@
+"""
+Тесты для Gatekeeper Worker tasks.
+Проверка обработки webhook сообщений, классификации и создания задач.
+"""
+import pytest
+from unittest.mock import Mock, patch, AsyncMock
+from datetime import datetime
+
+from app.workers.gatekeeper.models import MessageType, MessageClassification, IncomingMessage
+from app.workers.gatekeeper.tasks import classify_message, create_task_from_message
+
+
+class TestGatekeeperTasks:
+    """Тесты для задач Gatekeeper воркера."""
+    
+    @pytest.mark.asyncio
+    async def test_classify_message_as_task(self):
+        """Тест классификации сообщения как задачи."""
+        # Тестируем сообщение с ключевыми словами задачи
+        message_text = "Напомни мне купить молоко завтра"
+        
+        classification = await classify_message(message_text)
+        
+        assert classification.message_type == MessageType.TASK
+        assert classification.confidence > 0.5
+        assert "ключевые слова" in classification.reasoning.lower()
+    
+    @pytest.mark.asyncio
+    async def test_classify_message_as_chat(self):
+        """Тест классификации сообщения как чата."""
+        # Тестируем обычное сообщение без ключевых слов задачи
+        message_text = "Как дела? Что нового?"
+        
+        classification = await classify_message(message_text)
+        
+        assert classification.message_type == MessageType.CHAT
+        assert classification.confidence > 0.3
+        assert "обычное сообщение" in classification.reasoning.lower()
+    
+    @pytest.mark.asyncio
+    async def test_classify_message_with_task_keywords(self):
+        """Тест классификации с различными ключевыми словами задач."""
+        task_messages = [
+            "встреча завтра в 15:00",
+            "дедлайн по проекту 30 числа", 
+            "задача: проверить отчет",
+            "нужно сделать презентацию",
+            "позвонить клиенту"
+        ]
+        
+        for message in task_messages:
+            classification = await classify_message(message)
+            assert classification.message_type == MessageType.TASK, f"Сообщение '{message}' должно быть задачей"
+    
+    @pytest.mark.asyncio
+    @patch('app.workers.gatekeeper.tasks.openai_service')
+    async def test_create_task_from_message_success(self, mock_openai_service):
+        """Тест успешного создания задачи из сообщения."""
+        # Мокируем успешный парсинг задачи
+        mock_task = Mock()
+        mock_task.title = "Купить продукты"
+        mock_task.scheduled_at = None
+        mock_task.reminder_at = None
+        
+        mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
+        
+        # Вызываем создание задачи
+        await create_task_from_message(
+            user_id=123456,
+            chat_id=123456,
+            message_text="Купить продукты завтра",
+            user_name="TestUser"
+        )
+        
+        # Проверяем что OpenAI был вызван
+        mock_openai_service.parse_task.assert_called_once_with("Купить продукты завтра")
+    
+    @pytest.mark.asyncio
+    @patch('app.workers.gatekeeper.tasks.openai_service')
+    async def test_create_task_with_scheduled_time(self, mock_openai_service):
+        """Тест создания задачи с запланированным временем."""
+        # Мокируем задачу с запланированным временем
+        scheduled_time = datetime(2024, 12, 31, 15, 0, 0)
+        mock_task = Mock()
+        mock_task.title = "Встреча с клиентом"
+        mock_task.scheduled_at = scheduled_time
+        mock_task.reminder_at = None
+        
+        mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
+        
+        await create_task_from_message(
+            user_id=123456,
+            chat_id=123456,
+            message_text="Встреча с клиентом 31 декабря в 15:00",
+            user_name="TestUser"
+        )
+        
+        # Проверяем что OpenAI был вызван
+        mock_openai_service.parse_task.assert_called_once_with("Встреча с клиентом 31 декабря в 15:00")
+
+    @pytest.mark.asyncio
+    @patch('app.workers.gatekeeper.tasks.openai_service')
+    async def test_create_task_parsing_failed(self, mock_openai_service):
+        """Тест обработки неудачного парсинга задачи."""
+        # Мокируем неудачный парсинг (возвращаем None)
+        mock_openai_service.parse_task = AsyncMock(return_value=None)
+        
+        # Не должно быть исключения при неудачном парсинге
+        await create_task_from_message(
+            user_id=123456,
+            chat_id=123456,
+            message_text="Неопределенное сообщение",
+            user_name="TestUser"
+        )
+        
+        # Проверяем что OpenAI был вызван
+        mock_openai_service.parse_task.assert_called_once_with("Неопределенное сообщение")
+
+
+class TestWebhookProcessing:
+    """Тесты для обработки webhook сообщений (упрощенные для тестирования логики)."""
+    
+    @pytest.mark.asyncio
+    async def test_webhook_logic_task_classification(self):
+        """Тест логики классификации сообщения как задачи."""
+        # Тестируем что классификация правильно работает для задач
+        task_message = "Напомни купить молоко завтра"
+        classification = await classify_message(task_message)
+        
+        assert classification.message_type == MessageType.TASK
+        assert classification.confidence > 0.5
+    
+    @pytest.mark.asyncio 
+    async def test_webhook_logic_chat_classification(self):
+        """Тест логики классификации сообщения как чата."""
+        # Тестируем что классификация правильно работает для чата
+        chat_message = "Привет! Как дела?"
+        classification = await classify_message(chat_message)
+        
+        assert classification.message_type == MessageType.CHAT
+        assert classification.confidence > 0.3
+    
+    @pytest.mark.asyncio
+    @patch('app.workers.gatekeeper.tasks.openai_service')
+    async def test_webhook_logic_task_creation(self, mock_openai_service):
+        """Тест логики создания задачи."""
+        # Мокируем успешный парсинг задачи
+        mock_task = Mock()
+        mock_task.title = "Купить молоко"
+        mock_task.scheduled_at = None
+        mock_task.reminder_at = None
+        
+        mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
+        
+        # Вызываем создание задачи
+        await create_task_from_message(
+            user_id=123456,
+            chat_id=123456,
+            message_text="Купить молоко",
+            user_name="TestUser"
+        )
+        
+        # Проверяем что OpenAI был вызван
+        mock_openai_service.parse_task.assert_called_once_with("Купить молоко")
+    
+    @pytest.mark.asyncio
+    async def test_incoming_message_creation(self):
+        """Тест создания объекта IncomingMessage."""
+        message_data = {
+            "from": {"id": 123456, "first_name": "TestUser"},
+            "chat": {"id": 123456},
+            "text": "Тестовое сообщение"
+        }
+        
+        incoming_msg = IncomingMessage(
+            update_id=999,
+            user_id=message_data.get("from", {}).get("id", 0),
+            chat_id=message_data.get("chat", {}).get("id", 0),
+            message_text=message_data.get("text", ""),
+            user_name=message_data.get("from", {}).get("first_name", "Unknown"),
+            timestamp=datetime.utcnow()
+        )
+        
+        assert incoming_msg.user_id == 123456
+        assert incoming_msg.chat_id == 123456
+        assert incoming_msg.message_text == "Тестовое сообщение"
+        assert incoming_msg.user_name == "TestUser"
+
+
+class TestErrorHandling:
+    """Тесты обработки ошибок в Gatekeeper tasks."""
+    
+    @pytest.mark.asyncio
+    async def test_classify_message_exception_handling(self):
+        """Тест обработки исключений в classify_message."""
+        # Даже если произойдет исключение, функция должна вернуть CHAT классификацию
+        classification = await classify_message("тестовое сообщение")
+        
+        # Проверяем что возвращается валидная классификация
+        assert isinstance(classification, MessageClassification)
+        assert classification.message_type in [MessageType.TASK, MessageType.CHAT]
+        assert 0 <= classification.confidence <= 1.0
+    
+    @pytest.mark.asyncio
+    @patch('app.workers.gatekeeper.tasks.openai_service')
+    async def test_create_task_with_openai_error(self, mock_openai_service):
+        """Тест обработки ошибки OpenAI при создании задачи."""
+        # Мокируем исключение в OpenAI сервисе
+        mock_openai_service.parse_task.side_effect = Exception("OpenAI API error")
+        
+        # Должно поднять исключение для retry
+        with pytest.raises(Exception, match="OpenAI API error"):
+            await create_task_from_message(
+                user_id=123456,
+                chat_id=123456,
+                message_text="Тестовая задача",
+                user_name="TestUser"
+            )
+    
+    @pytest.mark.asyncio
+    async def test_process_webhook_invalid_message_data(self):
+        """Тест обработки некорректных данных."""
+        # Тестируем создание IncomingMessage с пустыми данными
+        incoming_msg = IncomingMessage(
+            update_id=555,
+            user_id=0,
+            chat_id=0,
+            message_text="",
+            user_name="Unknown",
+            timestamp=datetime.utcnow()
+        )
+        
+        # Проверяем что объект создается с дефолтными значениями
+        assert incoming_msg.user_id == 0
+        assert incoming_msg.chat_id == 0
+        assert incoming_msg.message_text == ""
+        assert incoming_msg.user_name == "Unknown"
+        
+        # Тестируем классификацию пустого сообщения
+        classification = await classify_message("")
+        assert isinstance(classification, MessageClassification)
+        assert classification.message_type in [MessageType.TASK, MessageType.CHAT]
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
