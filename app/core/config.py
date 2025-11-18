@@ -1,5 +1,6 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -12,8 +13,14 @@ class Settings(BaseSettings):
     db_user: str = Field(default="user")
     db_password: str = Field(default="password")
     
-    # Остальные настройки
+    # Redis настройки для Dramatiq
+    redis_host: str = Field(default="localhost")
+    redis_port: int = Field(default=6379)
+    redis_db: int = Field(default=1)  # Используем базу 1 для тестов
+    redis_password: str | None = Field(default=None)
     redis_url: str = Field(default="redis://localhost:6379/0")
+    
+    # Остальные настройки
     telegram_bot_token: str = Field(default="TEST_TOKEN")
     openai_api_key: str | None = Field(default=None)
     openai_base_url: str | None = Field(default=None)
