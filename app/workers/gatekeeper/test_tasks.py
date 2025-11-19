@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime
 
 from app.workers.gatekeeper.models import MessageType, MessageClassification, IncomingMessage
-from app.workers.gatekeeper.tasks import classify_message, create_task_from_message
+from app.workers.gatekeeper.tasks import classify_message, process_message_with_ai
 
 
 class TestGatekeeperTasks:
@@ -52,69 +52,6 @@ class TestGatekeeperTasks:
             classification = await classify_message(message)
             assert classification.message_type == MessageType.TASK, f"Сообщение '{message}' должно быть задачей"
     
-    @pytest.mark.asyncio
-    @patch('app.workers.gatekeeper.tasks.openai_service')
-    async def test_create_task_from_message_success(self, mock_openai_service):
-        """Тест успешного создания задачи из сообщения."""
-        # Мокируем успешный парсинг задачи
-        mock_task = Mock()
-        mock_task.title = "Купить продукты"
-        mock_task.scheduled_at = None
-        mock_task.reminder_at = None
-        
-        mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
-        
-        # Вызываем создание задачи
-        await create_task_from_message(
-            user_id=123456,
-            chat_id=123456,
-            message_text="Купить продукты завтра",
-            user_name="TestUser"
-        )
-        
-        # Проверяем что OpenAI был вызван
-        mock_openai_service.parse_task.assert_called_once_with("Купить продукты завтра")
-    
-    @pytest.mark.asyncio
-    @patch('app.workers.gatekeeper.tasks.openai_service')
-    async def test_create_task_with_scheduled_time(self, mock_openai_service):
-        """Тест создания задачи с запланированным временем."""
-        # Мокируем задачу с запланированным временем
-        scheduled_time = datetime(2024, 12, 31, 15, 0, 0)
-        mock_task = Mock()
-        mock_task.title = "Встреча с клиентом"
-        mock_task.scheduled_at = scheduled_time
-        mock_task.reminder_at = None
-        
-        mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
-        
-        await create_task_from_message(
-            user_id=123456,
-            chat_id=123456,
-            message_text="Встреча с клиентом 31 декабря в 15:00",
-            user_name="TestUser"
-        )
-        
-        # Проверяем что OpenAI был вызван
-        mock_openai_service.parse_task.assert_called_once_with("Встреча с клиентом 31 декабря в 15:00")
-
-    @pytest.mark.asyncio
-    @patch('app.workers.gatekeeper.tasks.openai_service')
-    async def test_create_task_parsing_failed(self, mock_openai_service):
-        """Тест обработки неудачного парсинга задачи."""
-        # Мокируем неудачный парсинг (возвращаем None)
-        mock_openai_service.parse_task = AsyncMock(return_value=None)
-        
-        # Не должно быть исключения при неудачном парсинге
-        await create_task_from_message(
-            user_id=123456,
-            chat_id=123456,
-            message_text="Неопределенное сообщение",
-            user_name="TestUser"
-        )
-        
-        # Проверяем что OpenAI был вызван
-        mock_openai_service.parse_task.assert_called_once_with("Неопределенное сообщение")
 
 
 class TestWebhookProcessing:
@@ -142,7 +79,8 @@ class TestWebhookProcessing:
     
     @pytest.mark.asyncio
     @patch('app.workers.gatekeeper.tasks.openai_service')
-    async def test_webhook_logic_task_creation(self, mock_openai_service):
+    @patch('app.workers.shared.tasks.send_telegram_message')
+    async def test_webhook_logic_task_creation(self, mock_send, mock_openai_service):
         """Тест логики создания задачи."""
         # Мокируем успешный парсинг задачи
         mock_task = Mock()
@@ -151,9 +89,10 @@ class TestWebhookProcessing:
         mock_task.reminder_at = None
         
         mock_openai_service.parse_task = AsyncMock(return_value=mock_task)
+        mock_send.send = AsyncMock()
         
-        # Вызываем создание задачи
-        await create_task_from_message(
+        # Вызываем обработку сообщения
+        await process_message_with_ai(
             user_id=123456,
             chat_id=123456,
             message_text="Купить молоко",
@@ -162,6 +101,9 @@ class TestWebhookProcessing:
         
         # Проверяем что OpenAI был вызван
         mock_openai_service.parse_task.assert_called_once_with("Купить молоко")
+        
+        # Проверяем что подтверждение было отправлено
+        mock_send.send.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_incoming_message_creation(self):
@@ -202,20 +144,29 @@ class TestErrorHandling:
         assert 0 <= classification.confidence <= 1.0
     
     @pytest.mark.asyncio
+    @patch('app.workers.gatekeeper.tasks.process_chat_message')
     @patch('app.workers.gatekeeper.tasks.openai_service')
-    async def test_create_task_with_openai_error(self, mock_openai_service):
-        """Тест обработки ошибки OpenAI при создании задачи."""
+    async def test_create_task_with_openai_error(self, mock_openai_service, mock_chat):
+        """Тест обработки ошибки OpenAI - отправка в чат."""
         # Мокируем исключение в OpenAI сервисе
         mock_openai_service.parse_task.side_effect = Exception("OpenAI API error")
+        mock_chat.send = Mock()
         
-        # Должно поднять исключение для retry
-        with pytest.raises(Exception, match="OpenAI API error"):
-            await create_task_from_message(
-                user_id=123456,
-                chat_id=123456,
-                message_text="Тестовая задача",
-                user_name="TestUser"
-            )
+        # Функция не поднимает исключение, а отправляет в чат
+        await process_message_with_ai(
+            user_id=123456,
+            chat_id=123456,
+            message_text="Тестовая задача",
+            user_name="TestUser"
+        )
+        
+        # Проверяем что сообщение отправлено в чат (в случае ошибки)
+        mock_chat.send.assert_called_once_with(
+            user_id=123456,
+            chat_id=123456,
+            message_text="Тестовая задача",
+            user_name="TestUser"
+        )
     
     @pytest.mark.asyncio
     async def test_process_webhook_invalid_message_data(self):

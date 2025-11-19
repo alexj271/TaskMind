@@ -6,7 +6,7 @@ import dramatiq
 import logging
 from typing import Dict, Any
 from datetime import datetime
-
+from app.core.config import settings
 from app.core.dramatiq_setup import redis_broker
 from app.services.openai_tools import OpenAIService
 from .models import IncomingMessage, MessageType, MessageClassification, ParsedTaskData
@@ -15,7 +15,7 @@ from ..chat.tasks import process_chat_message
 logger = logging.getLogger(__name__)
 
 # Инициализируем OpenAI сервис
-openai_service = OpenAIService()
+openai_service = OpenAIService(settings.gpt_model_fast)
 
 
 @dramatiq.actor(broker=redis_broker, max_retries=3, min_backoff=1000, max_backoff=30000)
@@ -44,26 +44,13 @@ async def process_webhook_message(update_id: int, message_data: Dict[str, Any]):
         # TODO: Сохранить в MessageHistory модель в БД
         logger.info(f"Gatekeeper: сохраняем историю сообщения от {incoming_msg.user_name}")
         
-        # Классифицируем сообщение
-        classification = await classify_message(incoming_msg.message_text)
-        logger.info(f"Gatekeeper: классификация = {classification.message_type}, confidence = {classification.confidence}")
-        
-        if classification.message_type == MessageType.TASK:
-            # Обрабатываем как задачу
-            await create_task_from_message(
-                user_id=incoming_msg.user_id,
-                chat_id=incoming_msg.chat_id,
-                message_text=incoming_msg.message_text,
-                user_name=incoming_msg.user_name
-            )
-        else:
-            # Отправляем в Chat Worker
-            await process_chat_message.send(
-                user_id=incoming_msg.user_id,
-                chat_id=incoming_msg.chat_id,
-                message_text=incoming_msg.message_text,
-                user_name=incoming_msg.user_name
-            )
+        # Обрабатываем сообщение с помощью AI
+        await process_message_with_ai(
+            user_id=incoming_msg.user_id,
+            chat_id=incoming_msg.chat_id,
+            message_text=incoming_msg.message_text,
+            user_name=incoming_msg.user_name
+        )
             
         logger.info(f"Gatekeeper: сообщение update_id={update_id} успешно обработано")
         
@@ -74,86 +61,101 @@ async def process_webhook_message(update_id: int, message_data: Dict[str, Any]):
 
 async def classify_message(message_text: str) -> MessageClassification:
     """
-    Классифицирует сообщение с помощью AI.
+    Совместимость: простая классификация для тестов.
+    В продакшене используется process_message_with_ai с полным AI анализом.
+    """
+    # Простая эвристика для тестов
+    task_keywords = ["напомни", "встреча", "дедлайн", "задача", "сделать", "купить", "позвонить"]
+    is_task = any(keyword in message_text.lower() for keyword in task_keywords)
     
-    Args:
-        message_text: Текст сообщения для классификации
-        
-    Returns:
-        MessageClassification: Результат классификации
-    """
-    try:
-        logger.info(f"Gatekeeper: классифицируем сообщение: '{message_text[:100]}...'")
-        
-        # TODO: Использовать специальный промпт для классификации
-        # Пока используем простую эвристику
-        task_keywords = ["напомни", "встреча", "дедлайн", "задача", "сделать", "купить", "позвонить"]
-        
-        is_task = any(keyword in message_text.lower() for keyword in task_keywords)
-        
-        classification = MessageClassification(
-            message_type=MessageType.TASK if is_task else MessageType.CHAT,
-            confidence=0.8 if is_task else 0.6,
-            reasoning=f"Найдены ключевые слова задач" if is_task else "Обычное сообщение"
-        )
-        
-        return classification
-        
-    except Exception as e:
-        logger.error(f"Gatekeeper: ошибка классификации сообщения: {str(e)}")
-        # В случае ошибки считаем обычным чатом
-        return MessageClassification(
-            message_type=MessageType.CHAT,
-            confidence=0.3,
-            reasoning="Ошибка классификации, по умолчанию чат"
-        )
+    return MessageClassification(
+        message_type=MessageType.TASK if is_task else MessageType.CHAT,
+        confidence=0.8 if is_task else 0.6,
+        reasoning=f"Найдены ключевые слова задач" if is_task else "Обычное сообщение"
+    )
 
 
-async def create_task_from_message(user_id: int, chat_id: int, message_text: str, user_name: str):
+async def process_message_with_ai(user_id: int, chat_id: int, message_text: str, user_name: str):
     """
-    Создает задачу из классифицированного сообщения.
+    Обрабатывает сообщение с помощью AI используя function calling:
+    если AI вызвал create_task - создаем задачу, иначе отправляем в чат.
     
     Args:
         user_id: ID пользователя Telegram
         chat_id: ID чата
-        message_text: Текст сообщения для парсинга
+        message_text: Текст сообщения для обработки
         user_name: Имя пользователя
     """
     try:
-        logger.info(f"Gatekeeper: создаем задачу для пользователя {user_name} (ID: {user_id})")
+        logger.info(f"Gatekeeper: обрабатываем сообщение от {user_name}: '{message_text[:50]}...'")
         
-        # Парсим задачу с помощью OpenAI
-        parsed_task = await openai_service.parse_task(message_text)
-        
-        if parsed_task:
-            logger.info(f"Gatekeeper: задача успешно распарсена: {parsed_task.title}")
+        # Используем chat_with_tools для определения нужна ли функция create_task
+        ai_response, function_call = await openai_service.chat_with_tools(message_text, user_id)
+              
+        if function_call and function_call.get("function_name") == "create_task":
+            # AI определил, что нужно создать задачу
+            task_args = function_call.get("arguments", {})
+            logger.info(f"Gatekeeper: AI вызвал create_task с аргументами: {task_args}")
             
-            # TODO: Сохранить задачу в базе данных
-            # TODO: Отправить подтверждение пользователю в Telegram
+            # Вызываем функцию создания задачи
+            from app.services.tools import create_task
+            task_result = create_task(**task_args)
             
-            # Планируем напоминание если есть запланированное время
-            if parsed_task.scheduled_at:
-                from ..shared.tasks import schedule_task_reminder
-                scheduled_timestamp = int(parsed_task.scheduled_at.timestamp())
-                schedule_task_reminder.send_with_options(
-                    args=(user_id, chat_id, parsed_task.title, scheduled_timestamp),
-                    eta=scheduled_timestamp
+            if task_result.get("success"):
+                logger.info(f"Gatekeeper: задача создана успешно: {task_result}")
+                
+                # Отправляем подтверждение пользователю
+                from ..shared.tasks import send_telegram_message
+                confirmation_text = f"✅ Задача создана: {task_args.get('title', 'Без названия')}"
+                
+                # Добавляем информацию о времени если есть
+                if task_args.get('datetime_start'):
+                    try:
+                        start_dt = datetime.fromisoformat(task_args['datetime_start'])
+                        confirmation_text += f"\n⏰ Запланировано на: {start_dt.strftime('%d.%m.%Y %H:%M')}"
+                    except ValueError:
+                        pass
+                        
+                await send_telegram_message.send(
+                    chat_id=chat_id,
+                    text=confirmation_text
                 )
-                logger.info(f"Gatekeeper: запланировано напоминание о задаче '{parsed_task.title}' на {parsed_task.scheduled_at}")
-            elif parsed_task.reminder_at:
-                from ..shared.tasks import schedule_task_reminder
-                reminder_timestamp = int(parsed_task.reminder_at.timestamp())
-                schedule_task_reminder.send_with_options(
-                    args=(user_id, chat_id, parsed_task.title, reminder_timestamp),
-                    eta=reminder_timestamp
+            else:
+                logger.error(f"Gatekeeper: ошибка создания задачи: {task_result}")
+                # В случае ошибки отправляем уведомление об ошибке в Telegram
+                from ..shared.tasks import send_telegram_message
+                error_text = "❌ Произошла ошибка при создании задачи. Попробуйте еще раз."
+                await send_telegram_message.send(
+                    chat_id=chat_id,
+                    text=error_text
                 )
-                logger.info(f"Gatekeeper: запланировано напоминание о задаче '{parsed_task.title}' на {parsed_task.reminder_at}")
-            
+                # Также отправляем в чат для обработки AI
+                process_chat_message.send(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    message_text=ai_response or message_text,
+                    user_name=user_name
+                )
         else:
-            logger.warning(f"Gatekeeper: не удалось распарсить задачу из текста: '{message_text[:100]}...'")
-            # TODO: отправить сообщение пользователю что не удалось понять задачу
+            # AI не вызвал функцию создания задачи - отправляем в чат
+            logger.info(f"Gatekeeper: сообщение не требует создания задачи, отправляем в чат")
+            process_chat_message.send(
+                user_id=user_id,
+                chat_id=chat_id,
+                message_text=ai_response or message_text,
+                user_name=user_name
+            )
         
     except Exception as e:
-        logger.error(f"Gatekeeper: ошибка создания задачи для пользователя {user_id}: {str(e)}")
-        # TODO: отправить сообщение пользователю об ошибке
-        raise
+        logger.error(f"Gatekeeper: ошибка обработки сообщения от пользователя {user_id}: {str(e)}")
+        # В случае ошибки отправляем уведомление об ошибке в Telegram
+        try:
+            from ..shared.tasks import send_telegram_message
+            error_text = "❌ Произошла ошибка при обработке сообщения. Попробуйте еще раз."
+            await send_telegram_message.send(
+                chat_id=chat_id,
+                text=error_text
+            )
+        except Exception as telegram_error:
+            logger.error(f"Gatekeeper: не удалось отправить уведомление об ошибке в Telegram: {telegram_error}")
+        

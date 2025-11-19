@@ -4,7 +4,9 @@ Shared tasks - общие задачи для всех воркеров.
 """
 import dramatiq
 import logging
+import asyncio
 from app.core.dramatiq_setup import redis_broker
+from app.services.telegram_client import send_message as telegram_send_message
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +36,8 @@ def schedule_task_reminder(user_id: int, chat_id: int, task_title: str, deadline
         # Не поднимаем исключение, чтобы не делать retry для напоминаний
 
 
-@dramatiq.actor(broker=redis_broker, max_retries=3)
-def send_telegram_message(chat_id: int, text: str):
+@dramatiq.actor(broker=redis_broker, max_retries=3, min_backoff=1000, max_backoff=30000)
+async def send_telegram_message(chat_id: int, text: str):
     """
     Отправляет сообщение в Telegram через Bot API.
     
@@ -44,9 +46,13 @@ def send_telegram_message(chat_id: int, text: str):
         text: Текст сообщения
     """
     try:
-        # TODO: Реализовать отправку через Telegram Bot API
-        # Пока заглушка
-        logger.info(f"Shared: отправка сообщения в чат {chat_id}: '{text[:50]}...'")
+        logger.info(f"Shared: отправляем сообщение в чат {chat_id}: '{text[:50]}...'")
+        
+        # Прямой вызов асинхронной функции
+        result = await telegram_send_message(chat_id, text)
+        
+        logger.info(f"Shared: сообщение успешно отправлено в чат {chat_id}")
+        return result
         
     except Exception as e:
         logger.error(f"Shared: ошибка отправки сообщения в чат {chat_id}: {str(e)}")

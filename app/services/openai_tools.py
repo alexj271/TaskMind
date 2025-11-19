@@ -1,14 +1,15 @@
 import json
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.schemas.task import ParsedTask
 from app.utils.prompt_manager import prompt_manager
+from app.services.tools import TOOL_SCHEMAS
 
 
 class OpenAIService:
-    def __init__(self):
+    def __init__(self, gpt_model: str = None):
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required for AI services")
         
@@ -17,7 +18,7 @@ class OpenAIService:
             client_kwargs["base_url"] = settings.openai_base_url
             
         self.client = AsyncOpenAI(**client_kwargs)
-        self.model = settings.gpt_model
+        self.model = gpt_model or settings.gpt_model_full
 
     async def chat(self, message: str) -> str:
         """Простой чат с OpenAI используя системный промпт"""
@@ -35,6 +36,52 @@ class OpenAIService:
                 temperature=0.7
             )
             return response.choices[0].message.content.strip()
+        except Exception as e:
+            raise RuntimeError(f"OpenAI API error: {str(e)}")
+
+    async def chat_with_tools(self, message: str, user_id: int, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Чат с AI используя function calling.
+        Возвращает tuple: (ответ, вызванная_функция_с_аргументами или None)
+        """
+        if tools is None:
+            tools = TOOL_SCHEMAS
+            
+        try:
+            system_prompt = prompt_manager.render("chat_assistant")
+            
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                tools=tools,
+                tool_choice="auto",  # Оставляем auto, но с улучшенным промптом
+                max_tokens=400,
+                temperature=0.3  # Снижаем температуру для более точного следования инструкциям
+            )
+            
+            message_response = response.choices[0].message
+            
+            # Проверяем был ли вызов функции
+            if message_response.tool_calls:
+                tool_call = message_response.tool_calls[0]
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+                
+                # Добавляем user_id если его нет в аргументах
+                if 'user_id' not in function_args:
+                    function_args['user_id'] = user_id
+                
+                return message_response.content or "", {
+                    "function_name": function_name,
+                    "arguments": function_args
+                }
+            
+            # Если функция не вызвана, возвращаем только текстовый ответ
+            return message_response.content or "", None
+            
         except Exception as e:
             raise RuntimeError(f"OpenAI API error: {str(e)}")
 
@@ -127,6 +174,12 @@ async def chat(message: str) -> str:
     """Простой чат с AI"""
     service = get_openai_service()
     return await service.chat(message)
+
+
+async def chat_with_tools(message: str, user_id: int, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Чат с AI используя function calling"""
+    service = get_openai_service()
+    return await service.chat_with_tools(message, user_id, tools)
 
 
 async def parse_task(text: str, timezone: str = "Europe/Moscow") -> ParsedTask:

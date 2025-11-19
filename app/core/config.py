@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     telegram_bot_token: str = Field(default="TEST_TOKEN")
     openai_api_key: str | None = Field(default=None)
     openai_base_url: str | None = Field(default=None)
-    gpt_model: str = Field(default="gpt-3.5-turbo")
+    gpt_model_full: str = Field(default="gpt-5")
+    gpt_model_fast: str = Field(default="gpt-4.1-nano")
     timezone: str = "UTC"
     
     @property
