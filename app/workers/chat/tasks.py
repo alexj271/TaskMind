@@ -9,6 +9,7 @@ from typing import Optional
 from app.core.dramatiq_setup import redis_broker
 from app.services.openai_tools import OpenAIService
 from app.core.db import init_db
+from app.services.telegram_client import send_message as telegram_send_message
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,8 @@ async def process_chat_message(user_id: int, chat_id: int, message_text: str, us
         # Пока простой ответ
         response_text = f"Привет, {user_name}! Я получил твое сообщение: '{message_text}'. Это обычный чат, а не создание задачи."
         
-        # TODO: Отправить ответ в Telegram
-        from ..shared.tasks import send_telegram_message
-        send_telegram_message.send(chat_id=chat_id, text=response_text)
+        # Отправляем ответ в Telegram
+        await telegram_send_message(chat_id, response_text)
         
         logger.info(f"Chat: ответ отправлен пользователю {user_name}")
         

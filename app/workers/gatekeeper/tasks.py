@@ -14,6 +14,7 @@ from app.utils.prompt_manager import get_prompt, get_template
 from app.repositories.user_repository import UserRepository
 from app.repositories.dialog_repository import DialogRepository
 from app.utils.summarizer import generate_dialogue_summary
+from app.services.telegram_client import send_message as telegram_send_message
 from .models import IncomingMessage, MessageType, MessageClassification, ParsedTaskData
 from ..chat.tasks import process_chat_message
 from datetime import datetime
@@ -125,7 +126,7 @@ tools_create_timezone = [
 ]
 
 
-async def _process_webhook_message_internal(update_id: int, message_data: Dict[str, Any]):
+async def process_webhook_message_internal(update_id: int, message_data: Dict[str, Any]):
     """
     Внутренняя функция для обработки webhook сообщения.
     Используется для тестирования логики без Dramatiq.
@@ -218,12 +219,8 @@ async def process_timezone_message(user_id: int, message_text: str):
                     logger.info(f"Gatekeeper: таймзона пользователя {user_id} установлена на {timezone}")
                     
                     # Отправляем сообщение в Telegram с подтверждением
-                    from ..shared.tasks import send_telegram_message
                     confirmation_text = f"✅ Ваш часовой пояс установлен на {timezone}. Теперь вы можете создавать задачи с указанием времени."
-                    await send_telegram_message.send(
-                        chat_id=user.chat_id,
-                        text=confirmation_text
-                    )
+                    await telegram_send_message(user.chat_id, confirmation_text)
                     
                     # Добавляем ответ ассистента в историю диалога
                     from app.repositories.dialog_repository import DialogRepository
@@ -248,12 +245,12 @@ async def process_timezone_message(user_id: int, message_text: str):
         logger.error(f"Gatekeeper: ошибка обработки сообщения для установки таймзоны от пользователя {user_id}: {str(e)}")
         # В случае ошибки отправляем уведомление об ошибке в Telegram
         try:
-            from ..shared.tasks import send_telegram_message
             error_text = "❌ Произошла ошибка при обработке сообщения. Попробуйте еще раз."
-            await send_telegram_message.send(
-                chat_id=None,
-                text=error_text
-            )
+            # Пытаемся получить пользователя для отправки сообщения
+            if 'user' in locals() and user and hasattr(user, 'chat_id'):
+                await telegram_send_message(user.chat_id, error_text)
+            else:
+                logger.warning("Gatekeeper: не удалось определить chat_id для отправки уведомления об ошибке")
             
             # Добавляем ответ ассистента в историю диалога (если есть user)
             if 'user' in locals():
@@ -310,11 +307,7 @@ async def process_task_message(user_id: int, chat_id: int, message_text: str, us
                         confirmation_text += f"\n⏰ Запланировано на: {start_dt.strftime('%d.%m.%Y %H:%M')}"
                     except ValueError:
                         pass
-                        
-                await send_telegram_message.send(
-                    chat_id=chat_id,
-                    text=confirmation_text
-                )
+                await telegram_send_message(chat_id, confirmation_text)
                 
                 # Добавляем ответ ассистента в историю диалога
                 from app.repositories.user_repository import UserRepository

@@ -11,7 +11,7 @@ from app.services.openai_tools import OpenAIService
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.core.db import init_db
-from app.workers.gatekeeper.tasks import _process_webhook_message_internal
+from app.workers.gatekeeper.tasks import process_webhook_message_internal
 
 
 # Настраиваем логирование при инициализации модуля
@@ -35,7 +35,7 @@ async def process_webhook_message(update_id: int, message_data: Dict[str, Any]):
     await init_db()
     
     try:
-        await _process_webhook_message_internal(update_id, message_data)
+        await process_webhook_message_internal(update_id, message_data)
     finally:
         # Закрываем соединения после обработки
         from tortoise import Tortoise

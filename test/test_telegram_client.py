@@ -3,7 +3,7 @@
 """
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, Mock
 from app.services.telegram_client import TelegramClient, send_message
 
 
@@ -13,14 +13,14 @@ async def test_telegram_client_send_message_success():
     
     # Мокаем httpx ответ
     mock_response = AsyncMock()
-    mock_response.json.return_value = {
+    mock_response.json = Mock(return_value={
         "ok": True,
         "result": {
             "message_id": 123,
             "chat": {"id": 12345},
             "text": "Test message"
         }
-    }
+    })
     mock_response.raise_for_status = AsyncMock()
     
     # Мокаем httpx клиент
@@ -51,7 +51,7 @@ async def test_telegram_client_send_message_too_long():
     
     # Мокаем httpx ответ
     mock_response = AsyncMock()
-    mock_response.json.return_value = {"ok": True, "result": {}}
+    mock_response.json = Mock(return_value={"ok": True, "result": {}})
     mock_response.raise_for_status = AsyncMock()
     
     with patch("httpx.AsyncClient") as mock_client_class:
@@ -91,11 +91,11 @@ async def test_telegram_client_api_error():
     
     # Мокаем ответ с ошибкой
     mock_response = AsyncMock()
-    mock_response.json.return_value = {
+    mock_response.json = Mock(return_value={
         "ok": False,
         "error_code": 400,
         "description": "Bad Request: chat not found"
-    }
+    })
     mock_response.raise_for_status = AsyncMock()
     
     with patch("httpx.AsyncClient") as mock_client_class:
@@ -114,7 +114,7 @@ async def test_send_message_function():
     """Тест глобальной функции send_message"""
     
     mock_response = AsyncMock()
-    mock_response.json.return_value = {"ok": True, "result": {}}
+    mock_response.json = Mock(return_value={"ok": True, "result": {}})
     mock_response.raise_for_status = AsyncMock()
     
     with patch("httpx.AsyncClient") as mock_client_class:
