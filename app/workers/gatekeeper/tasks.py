@@ -195,7 +195,7 @@ async def process_timezone_message(user_id: int, message_text: str):
         
         gatekeeper_timezone_prompt = get_prompt(
             prompt_name="timezone_parse",
-            template_dir=str(Path(__file__).parent.parent / "prompts"),
+            template_dir=str(Path(__file__) / "prompts"),
             current_datetime=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )      
         
@@ -234,12 +234,6 @@ async def process_timezone_message(user_id: int, message_text: str):
         else:           
             # AI не вызвал функцию установки таймзоны - отправляем в чат
             logger.info(f"Gatekeeper: сообщение не требует установки таймзоны, отправляем в чат")
-            process_chat_message.send(
-                user_id=user_id,
-                chat_id=None,
-                message_text=ai_response or message_text,
-                user_name=None
-            )
 
     except Exception as e:      
         logger.error(f"Gatekeeper: ошибка обработки сообщения для установки таймзоны от пользователя {user_id}: {str(e)}")
