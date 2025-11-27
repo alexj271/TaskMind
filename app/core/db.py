@@ -9,6 +9,8 @@ TORTOISE_ORM = {
                 "app.models.user",
                 "app.models.task",
                 "app.models.dialog_session",
+                "app.models.city",
+                "app.models.message_history",
                 "aerich.models",
             ],
             "default_connection": "default",

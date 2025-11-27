@@ -1,0 +1,213 @@
+{
+  "tests": [
+
+    {
+      "id": "1.1",
+      "input": "Напомни завтра купить молоко в 10 утра.",
+      "expected": {
+        "success": true,
+        "task": {
+          "title": "Купить молоко",
+          "datetime": "<<ISO время завтра 10:00 в UTC>>",
+          "timezone": "Europe/Moscow"
+        }
+      }
+    },
+
+    {
+      "id": "1.2",
+      "input": "Создай задачу: встреча 2025-03-01 в 14:30.",
+      "expected": {
+        "success": true,
+        "task": {
+          "title": "Встреча",
+          "datetime": "<<2025-03-01T14:30 Europe/Berlin в UTC>>",
+          "timezone": "Europe/Moscow"
+        }
+      }
+    },
+
+    {
+      "id": "1.3",
+      "input": "Поставь напоминание через 3 часа проверить духовку.",
+      "expected": {
+        "success": true,
+        "task": {
+          "title": "Проверить духовку",
+          "datetime": "<<текущее время + 3 часа в UTC>>",
+          "timezone": "Europe/Moscow"
+        }
+      }
+    },
+
+    {
+      "id": "1.4",
+      "input": "Запиши задачу на 8pm позвонить маме.",
+      "expected": {
+        "success": true,
+        "task": {
+          "title": "Позвонить маме",
+          "datetime": "<<сегодня 20:00 America/New_York в UTC>>",
+          "timezone": "Europe/Moscow"
+        }
+      }
+    },
+
+    {
+      "id": "1.5",
+      "input": "Напомни в 00:30 следующей ночью отправить отчёт.",
+      "expected": {
+        "success": true,
+        "task": {
+          "title": "Отправить отчёт",
+          "datetime": "<<следующая ночь 00:30 Asia/Tokyo в UTC>>",
+          "timezone": "Europe/Moscow"
+        }
+      }
+    },
+
+    {
+      "id": "2.1",
+      "input": "Поставь задачу на 25:61 завтра позвонить.",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "INVALID_TIME",
+          "error_message": "Некорректное время: 25:61"
+        }
+      }
+    },
+
+    {
+      "id": "2.2",
+      "input": "Создай задачу на 31 февраля встретиться с другом.",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "INVALID_DATE",
+          "error_message": "Некорректная дата: 31 февраля"
+        }
+      }
+    },
+    {
+      "id": "2.4",
+      "input": "Напомни 2022-01-01 пойти в кино.",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "DATE_IN_PAST",
+          "error_message": "Указанная дата уже прошла."
+        }
+      }
+    },
+
+    {
+      "id": "4.1",
+      "input": "Как думаешь, кто выиграет Лигу Чемпионов?",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Сообщение не относится к постановке задач."
+        }
+      }
+    },
+
+    {
+      "id": "4.2",
+      "input": "А какая погода будет завтра в Москве?",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Сообщение не относится к постановке задач."
+        }
+      }
+    },
+
+    {
+      "id": "4.3",
+      "input": "кххппоо тасссккк hhhh",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Сообщение не относится к постановке задач."
+        }
+      }
+    },
+
+    {
+      "id": "4.4",
+      "input": "Я сегодня так устал…",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Сообщение не относится к постановке задач."
+        }
+      }
+    },
+
+    {
+      "id": "5.1",
+      "input": "Создай задачу позвонить в 9 или в 10 утра завтра.",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "INVALID_TIME",
+          "error_message": "Указано несколько вариантов времени."
+        }
+      }
+    },
+
+    {
+      "id": "5.2",
+      "input": "Поставь на завтра в 15:00.",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Не указано описание задачи."
+        }
+      }
+    },
+
+    {
+      "id": "5.3",
+      "input": "Напомни что-нибудь сделать завтра утром. TZ=UTC.",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Слишком неопределённая задача."
+        }
+      }
+    },
+
+    {
+      "id": "5.4",
+      "input": "В 13:00 сделай.",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Не указано действие для задачи."
+        }
+      }
+    },
+
+    {
+      "id": "5.5",
+      "input": "Ну смотри… я вчера думал о том, что жизнь как река… И вообще…",
+      "expected": {
+        "success": false,
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Сообщение не относится к задачам."
+        }
+      }
+    }
+
+  ]
+}

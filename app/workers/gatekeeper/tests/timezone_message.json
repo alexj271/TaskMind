@@ -1,0 +1,104 @@
+{
+  "tests": [
+    {
+      "id": "tz1",
+      "input": "Я живу в Москве",
+      "expected": {
+        "success": true,
+        "task": {
+          "city": "Moscow"
+        }
+      }
+    },
+    {
+      "id": "tz2",
+      "input": "Мой часовой пояс Нью-Йорк",
+      "expected": {
+        "success": true,
+        "task": {
+          "city": "New York"
+        }
+      }
+    },
+    {
+      "id": "tz3",
+      "input": "Сейчас 15:30 в Лондоне",
+      "expected": {
+        "success": true,
+        "task": {
+          "city": "London"
+        }
+      }
+    },
+    {
+      "id": "tz4",
+      "input": "Установи таймзону UTC+3",
+      "expected": {
+        "success": true,
+        "task": {
+          "timezone": "Etc/GMT-3"
+        }
+      }
+    },
+    {
+      "id": "tz5",
+      "input": "Я в Токио, время 10 утра",
+      "expected": {
+        "success": true,
+        "task": {
+          "city": "Tokyo"
+        }
+      }
+    },
+    {
+      "id": "tz6",
+      "input": "Мой timezone Europe/Berlin",
+      "expected": {
+        "success": true,
+        "task": {
+          "timezone": "Europe/Berlin"
+        }
+      }
+    },
+    {
+      "id": "tz7",
+      "input": "Живу в Сан-Франциско",
+      "expected": {
+        "success": true,
+        "task": {
+          "city": "San Francisco"
+        }
+      }
+    },
+    {
+      "id": "tz8",
+      "input": "Время на моих часах 14:00, часовой пояс EST",
+      "expected": {
+        "success": true,
+        "task": {
+          "timezone": "America/New_York"
+        }
+      }
+    },
+    {
+      "id": "tz9",
+      "input": "Привет, как дела?",
+      "expected": {
+        "error": {
+          "error_code": "OFF_TOPIC",
+          "error_message": "Сообщение не содержит информации о времени или часовой поясе"
+        }
+      }
+    },
+    {
+      "id": "tz10",
+      "input": "Время сейчас 15:30",
+      "expected": {
+        "success": true,
+        "task": {
+          "datetime": "15:30"
+        }
+      }
+    }
+  ]
+}

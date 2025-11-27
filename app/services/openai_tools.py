@@ -39,17 +39,18 @@ class OpenAIService:
         except Exception as e:
             raise RuntimeError(f"OpenAI API error: {str(e)}")
 
-    async def chat_with_tools(self, message: str, user_id: int, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
+    async def chat_with_tools(self, message: str, user_id: int, system_prompt: str = None, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
         """
         Чат с AI используя function calling.
         Возвращает tuple: (ответ, вызванная_функция_с_аргументами или None)
         """
         if tools is None:
             tools = TOOL_SCHEMAS
-            
-        try:
+        
+        if system_prompt is None:
             system_prompt = prompt_manager.render("chat_assistant")
             
+        try:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[

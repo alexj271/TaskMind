@@ -1,0 +1,101 @@
+{
+  "timestamp": "2025-11-23T20:01:29.284730",
+  "openai_model": "gpt-4.1-nano",
+  "log_file": "/home/alex/project/vscode/TaskMind/app/workers/gatekeeper/tests/test_reports/test_logs_20251123_200129.log",
+  "tests": [
+    {
+      "test_name": "test_connection_error_handling",
+      "timestamp": "2025-11-23T20:02:32.953202",
+      "input_message": "Тестируем обработку ошибок подключения",
+      "expected_behavior": "Уведомление об ошибке в Telegram + fallback в чат",
+      "actual_behavior": "Telegram: True, Чат: False",
+      "ai_response": null,
+      "function_call": null,
+      "success": false,
+      "error": "telegram_called=True, chat_called=False, exception=False",
+      "exception_info": null
+    },
+    {
+      "test_name": "test_task_creation_failure_handling",
+      "timestamp": "2025-11-23T20:02:34.790823",
+      "input_message": "Создай задачу: встреча завтра в 15:00",
+      "expected_behavior": "Уведомление об ошибке в Telegram + fallback в чат",
+      "actual_behavior": "Telegram: True, Чат: False",
+      "ai_response": null,
+      "function_call": {
+        "function_name": "create_task",
+        "error": "Database connection failed"
+      },
+      "success": false,
+      "error": "telegram_called=True, chat_called=False, exception=False",
+      "exception_info": null
+    },
+    {
+      "test_name": "test_task_creation_message",
+      "timestamp": "2025-11-23T20:02:39.903413",
+      "input_message": "Напомни мне завтра в 15:00 позвонить маме",
+      "expected_behavior": "Создание задачи",
+      "actual_behavior": "Создание задачи",
+      "ai_response": "",
+      "function_call": {
+        "function_name": "create_task",
+        "arguments": {
+          "user_id": 12345,
+          "title": "Позвонить маме",
+          "datetime_start": "2023-12-26T15:00:00"
+        }
+      },
+      "success": true,
+      "error": null,
+      "exception_info": null
+    },
+    {
+      "test_name": "test_chat_message",
+      "timestamp": "2025-11-23T20:02:45.658954",
+      "input_message": "Привет! Как дела? Расскажи анекдот",
+      "expected_behavior": "Отправка в чат",
+      "actual_behavior": "Создание задачи",
+      "ai_response": "Привет! У меня всё отлично, спасибо! 😊 А вот анекдот для тебя:\n\n— Почему программисты не любят ходить в лес?  \n— Потому что там много багов! 😂\n\nЕсли вдруг появится желание что-то запланировать или напомнить, скажи! 🌟",
+      "function_call": null,
+      "success": false,
+      "error": "telegram_called=True, chat_called=False",
+      "exception_info": null
+    },
+    {
+      "test_name": "test_ambiguous_message",
+      "timestamp": "2025-11-23T20:02:53.198174",
+      "input_message": "Нужно будет что-то сделать",
+      "expected_behavior": "Создание задачи ИЛИ отправка в чат (решение AI)",
+      "actual_behavior": "Создание задачи",
+      "ai_response": "",
+      "function_call": {
+        "function_name": "create_task",
+        "arguments": {
+          "user_id": 12345,
+          "title": "Что-то сделать"
+        }
+      },
+      "success": true,
+      "error": null,
+      "exception_info": null
+    }
+  ],
+  "session_info": {
+    "total_tests_run": 5,
+    "successful_tests": 2,
+    "failed_tests": 3,
+    "skipped_tests": 0
+  },
+  "summary": {
+    "total_tests": 5,
+    "successful_tests": 2,
+    "failed_tests": 3,
+    "skipped_tests": 0,
+    "manual_logged_tests": 5,
+    "auto_logged_tests": 0,
+    "task_creation_tests": 2,
+    "chat_message_tests": 4,
+    "log_file_size_bytes": 104534
+  },
+  "log_content": "ody.complete\n2025-11-23 20:02:59,017 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>\n2025-11-23 20:02:59,017 - httpcore.http11 - DEBUG - receive_response_headers.failed exception=RuntimeError('Event loop is closed')\n2025-11-23 20:02:59,018 - httpcore.http11 - DEBUG - response_closed.started\n2025-11-23 20:02:59,018 - httpcore.http11 - DEBUG - response_closed.failed exception=RuntimeError('Event loop is closed')\n2025-11-23 20:02:59,018 - openai._base_client - INFO - Retrying request to /chat/completions in 0.412860 seconds\n2025-11-23 20:02:59,436 - httpcore.connection - DEBUG - connect_tcp.started host='bothub.chat' port=443 local_address=None timeout=5.0 socket_options=None\n2025-11-23 20:02:59,526 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7cc8883ae630>\n2025-11-23 20:02:59,527 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x7cc8894e0e50> server_hostname='bothub.chat' timeout=5.0\n2025-11-23 20:02:59,617 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7cc8883ad280>\n2025-11-23 20:02:59,617 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>\n2025-11-23 20:02:59,618 - httpcore.http11 - DEBUG - send_request_headers.complete\n2025-11-23 20:02:59,618 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>\n2025-11-23 20:02:59,618 - httpcore.http11 - DEBUG - send_request_body.complete\n2025-11-23 20:02:59,618 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:02,087 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Server', b'nginx'), (b'Date', b'Sun, 23 Nov 2025 15:03:02 GMT'), (b'Content-Type', b'application/json; charset=utf-8'), (b'Content-Length', b'257'), (b'Connection', b'keep-alive'), (b'X-Powered-By', b'Express'), (b'Access-Control-Allow-Origin', b'*'), (b'ETag', b'W/\"101-qK0vIrBIhOJyuyy0y0m543HtuFQ\"')])\n2025-11-23 20:03:02,088 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>\n2025-11-23 20:03:02,088 - httpcore.http11 - DEBUG - receive_response_body.complete\n2025-11-23 20:03:02,088 - httpcore.http11 - DEBUG - response_closed.started\n2025-11-23 20:03:02,088 - httpcore.http11 - DEBUG - response_closed.complete\n2025-11-23 20:03:02,088 - app.workers.gatekeeper.tasks - ERROR - Gatekeeper: ошибка обработки сообщения от пользователя 12345: OpenAI API error: Error code: 400 - {'status': 'error', 'error': {'message': '{\\n  \"error\": {\\n    \"message\": \"Missing required parameter: \\'tools[0].type\\'.\",\\n    \"type\": \"invalid_request_error\",\\n    \"param\": \"tools[0].type\",\\n    \"code\": \"missing_required_parameter\"\\n  }\\n}'}}\n2025-11-23 20:03:02,099 - asyncio - DEBUG - Using selector: EpollSelector\n2025-11-23 20:03:02,100 - asyncio - DEBUG - Using selector: EpollSelector\n2025-11-23 20:03:02,100 - app.workers.gatekeeper.tasks - INFO - Gatekeeper: обрабатываем сообщение от TestUser: 'Расскажи мне шутку про программистов...'\n2025-11-23 20:03:02,102 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:02,102 - httpcore.http11 - DEBUG - send_request_headers.complete\n2025-11-23 20:03:02,102 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>\n2025-11-23 20:03:02,102 - httpcore.http11 - DEBUG - send_request_body.complete\n2025-11-23 20:03:02,103 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:02,103 - httpcore.http11 - DEBUG - receive_response_headers.failed exception=RuntimeError('Event loop is closed')\n2025-11-23 20:03:02,103 - httpcore.http11 - DEBUG - response_closed.started\n2025-11-23 20:03:02,103 - httpcore.http11 - DEBUG - response_closed.failed exception=RuntimeError('Event loop is closed')\n2025-11-23 20:03:02,103 - openai._base_client - INFO - Retrying request to /chat/completions in 0.441939 seconds\n2025-11-23 20:03:02,546 - httpcore.connection - DEBUG - connect_tcp.started host='bothub.chat' port=443 local_address=None timeout=5.0 socket_options=None\n2025-11-23 20:03:02,639 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7cc8882774a0>\n2025-11-23 20:03:02,639 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x7cc8894e0e50> server_hostname='bothub.chat' timeout=5.0\n2025-11-23 20:03:02,729 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7cc888277b60>\n2025-11-23 20:03:02,730 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:02,730 - httpcore.http11 - DEBUG - send_request_headers.complete\n2025-11-23 20:03:02,731 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>\n2025-11-23 20:03:02,731 - httpcore.http11 - DEBUG - send_request_body.complete\n2025-11-23 20:03:02,731 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:03,961 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Server', b'nginx'), (b'Date', b'Sun, 23 Nov 2025 15:03:03 GMT'), (b'Content-Type', b'application/json; charset=utf-8'), (b'Content-Length', b'257'), (b'Connection', b'keep-alive'), (b'X-Powered-By', b'Express'), (b'Access-Control-Allow-Origin', b'*'), (b'ETag', b'W/\"101-qK0vIrBIhOJyuyy0y0m543HtuFQ\"')])\n2025-11-23 20:03:03,962 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>\n2025-11-23 20:03:03,962 - httpcore.http11 - DEBUG - receive_response_body.complete\n2025-11-23 20:03:03,962 - httpcore.http11 - DEBUG - response_closed.started\n2025-11-23 20:03:03,962 - httpcore.http11 - DEBUG - response_closed.complete\n2025-11-23 20:03:03,963 - app.workers.gatekeeper.tasks - ERROR - Gatekeeper: ошибка обработки сообщения от пользователя 12345: OpenAI API error: Error code: 400 - {'status': 'error', 'error': {'message': '{\\n  \"error\": {\\n    \"message\": \"Missing required parameter: \\'tools[0].type\\'.\",\\n    \"type\": \"invalid_request_error\",\\n    \"param\": \"tools[0].type\",\\n    \"code\": \"missing_required_parameter\"\\n  }\\n}'}}\n2025-11-23 20:03:03,984 - asyncio - DEBUG - Using selector: EpollSelector\n2025-11-23 20:03:03,985 - asyncio - DEBUG - Using selector: EpollSelector\n2025-11-23 20:03:03,987 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:03,988 - httpcore.http11 - DEBUG - send_request_headers.complete\n2025-11-23 20:03:03,988 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>\n2025-11-23 20:03:03,988 - httpcore.http11 - DEBUG - send_request_body.complete\n2025-11-23 20:03:03,988 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:03,989 - httpcore.http11 - DEBUG - receive_response_headers.failed exception=RuntimeError('Event loop is closed')\n2025-11-23 20:03:03,989 - httpcore.http11 - DEBUG - response_closed.started\n2025-11-23 20:03:03,989 - httpcore.http11 - DEBUG - response_closed.failed exception=RuntimeError('Event loop is closed')\n2025-11-23 20:03:03,989 - openai._base_client - INFO - Retrying request to /chat/completions in 0.389681 seconds\n2025-11-23 20:03:04,380 - httpcore.connection - DEBUG - connect_tcp.started host='bothub.chat' port=443 local_address=None timeout=5.0 socket_options=None\n2025-11-23 20:03:04,474 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7cc888276f00>\n2025-11-23 20:03:04,475 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x7cc8894e0e50> server_hostname='bothub.chat' timeout=5.0\n2025-11-23 20:03:04,565 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x7cc888277200>\n2025-11-23 20:03:04,565 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:04,565 - httpcore.http11 - DEBUG - send_request_headers.complete\n2025-11-23 20:03:04,565 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>\n2025-11-23 20:03:04,565 - httpcore.http11 - DEBUG - send_request_body.complete\n2025-11-23 20:03:04,566 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>\n2025-11-23 20:03:08,074 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Server', b'nginx'), (b'Date', b'Sun, 23 Nov 2025 15:03:08 GMT'), (b'Content-Type', b'application/json; charset=utf-8'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'X-Powered-By', b'Express'), (b'Access-Control-Allow-Origin', b'*'), (b'ETag', b'W/\"324-6g9d0L8T3wOJNAkFUIWQVH/5ko0\"'), (b'Access-Control-Allow-Credentials', b'true'), (b'Access-Control-Allow-Headers', b'Authorization,Accept,Origin,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Range,Range'), (b'Access-Control-Allow-Methods', b'GET,POST,OPTIONS,PUT,DELETE,PATCH'), (b'Content-Encoding', b'gzip')])\n2025-11-23 20:03:08,074 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>\n2025-11-23 20:03:08,075 - httpcore.http11 - DEBUG - receive_response_body.complete\n2025-11-23 20:03:08,075 - httpcore.http11 - DEBUG - response_closed.started\n2025-11-23 20:03:08,075 - httpcore.http11 - DEBUG - response_closed.complete\n2025-11-23 20:03:08,075 - test_process_message_ai_integration - INFO - ✅ OpenAI подключение работает. Ответ: Привет! У меня всё отлично 😊 Чем могу помочь сегод...\n2025-11-23 20:03:08,076 - asyncio - DEBUG - Using selector: EpollSelector\n"
+}

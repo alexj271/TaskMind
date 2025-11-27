@@ -22,23 +22,23 @@ class PromptTemplate:
         return template.format(**kwargs)
 
 
-class PromptManager:
+class TenolateManager:
     """Менеджер для управления промптами"""
     
-    def __init__(self, prompts_dir: str = None):
-        if prompts_dir is None:
+    def __init__(self, template_dir: str = None, subdir: str = None):
+        if template_dir is None:
             # Автоматически определяем путь к папке prompts
             current_dir = Path(__file__).parent.parent  # app/utils -> app
-            self.prompts_dir = current_dir / "prompts"
+            self.template_dir = current_dir / subdir
         else:
-            self.prompts_dir = Path(prompts_dir)
+            self.template_dir = Path(template_dir)
         
         self._templates: Dict[str, PromptTemplate] = {}
     
     def get_template(self, name: str) -> PromptTemplate:
         """Получает шаблон по имени"""
         if name not in self._templates:
-            template_path = self.prompts_dir / f"{name}.md"
+            template_path = self.template_dir / f"{name}.md"
             if not template_path.exists():
                 raise FileNotFoundError(f"Prompt template '{name}' not found at {template_path}")
             self._templates[name] = PromptTemplate(template_path)
@@ -52,15 +52,41 @@ class PromptManager:
     
     def list_templates(self) -> list[str]:
         """Возвращает список доступных шаблонов"""
-        if not self.prompts_dir.exists():
+        if not self.template_dir.exists():
             return []
         
         templates = []
-        for file_path in self.prompts_dir.glob("*.md"):
+        for file_path in self.template_dir.glob("*.md"):
             templates.append(file_path.stem)
         
         return sorted(templates)
 
 
-# Глобальный экземпляр менеджера промптов
+class PromptManager(TenolateManager):
+    """Менеджер для работы с промптами в приложении TaskMind"""
+    def __init__(self, template_dir: str = None):
+        super().__init__(template_dir=template_dir, subdir="prompts")
+
+
 prompt_manager = PromptManager()
+
+
+def get_prompt(prompt_name: str, template_dir: str = None, **kwargs) -> TenolateManager:
+    """Функция для получения экземпляра PromptManager с указанной поддиректорией"""
+    current_dir = Path(__file__).parent.parent  # app/utils -> app
+    if template_dir is None:
+        template_dir = current_dir / "prompts"
+    manager = TenolateManager(template_dir=str(template_dir))
+
+    return manager.render(prompt_name, **kwargs)
+
+
+
+def get_template(template_name: str, template_dir: str = None, **kwargs) -> TenolateManager:
+    """Функция для получения экземпляра PromptManager с указанной поддиректорией"""
+    current_dir = Path(__file__).parent.parent  # app/utils -> app
+    if template_dir is None:
+        template_dir = current_dir / "templates"
+    manager = TenolateManager(template_dir=str(template_dir))
+
+    return manager.render(template_name, **kwargs)

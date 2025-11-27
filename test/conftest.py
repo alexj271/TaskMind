@@ -44,6 +44,32 @@ def redis_test_setup():
         pytest.skip("Redis не доступен для тестов")
 
 
+@pytest.fixture(scope="session")
+async def tortoise_test_setup():
+    """Настройка Tortoise ORM для тестов."""
+    # Используем SQLite в памяти для тестов
+    TORTOISE_ORM_TEST = {
+        "connections": {"default": "sqlite://:memory:"},
+        "apps": {
+            "models": {
+                "models": [
+                    "app.models.user",
+                    "app.models.task",
+                    "app.models.dialog_session",
+                    "app.models.city",
+                    "aerich.models",
+                ],
+                "default_connection": "default",
+            }
+        },
+    }
+    
+    await Tortoise.init(config=TORTOISE_ORM_TEST)
+    await Tortoise.generate_schemas()
+    yield
+    await Tortoise.close_connections()
+
+
 @pytest.fixture
 def client():
     """FastAPI test client."""
