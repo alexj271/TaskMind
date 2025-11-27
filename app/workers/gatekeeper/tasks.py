@@ -195,7 +195,7 @@ async def process_timezone_message(user_id: int, message_text: str):
         
         gatekeeper_timezone_prompt = get_prompt(
             prompt_name="timezone_parse",
-            template_dir=str(Path(__file__) / "prompts"),
+            template_dir=str(Path(__file__).parent / "prompts"),
             current_datetime=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )      
         
