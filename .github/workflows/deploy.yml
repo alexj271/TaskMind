@@ -23,9 +23,12 @@ jobs:
             cd /opt/TaskMind
             git pull
 
-            # Если Python-проект— раскомментируй
-            # source venv/bin/activate
-            # pip install -r requirements.txt
+            # Активация виртуального окружения и установка зависимостей
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+            # Инициализация/миграция базы данных
+            aerich upgrade
 
             supervisorctl restart taskmind-api
             supervisorctl restart taskmind-worker
