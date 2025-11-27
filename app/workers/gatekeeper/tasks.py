@@ -374,15 +374,3 @@ async def process_task_message(user_id: int, chat_id: int, message_text: str, us
         except Exception as telegram_error:
             logger.error(f"Gatekeeper: не удалось отправить уведомление об ошибке в Telegram: {telegram_error}")
         
-
-@dramatiq.actor(broker=redis_broker, max_retries=3, min_backoff=1000, max_backoff=30000)
-async def process_webhook_message(update_id: int, message_data: Dict[str, Any]):
-    """
-    Главная точка входа для всех webhook сообщений.
-    Логирует историю сообщений и запускает классификацию.
-    
-    Args:
-        update_id: ID обновления от Telegram
-        message_data: Данные сообщения в формате словаря
-    """
-    await _process_webhook_message_internal(update_id, message_data)

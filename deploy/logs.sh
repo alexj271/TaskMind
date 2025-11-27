@@ -29,7 +29,7 @@ case "$1" in
         ;;
     "worker")
         echo "⚙️ Логи Dramatiq воркера:"
-        ssh $DEPLOY_SERVER "tail -n 50 /var/log/taskmind-worker.out.log"
+        ssh $DEPLOY_SERVER "tail -n 50 /var/log/taskmind-worker.err.log"
         ;;
     "nginx")
         echo "🌐 Логи Nginx:"
