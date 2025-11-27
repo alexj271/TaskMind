@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import logging
-from app.workers.gatekeeper.tasks import process_webhook_message
+
+from app.workers.telegram_actors import process_webhook_message
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
