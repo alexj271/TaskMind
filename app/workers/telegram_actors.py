@@ -10,6 +10,7 @@ from app.core.dramatiq_setup import redis_broker
 from app.services.openai_tools import OpenAIService
 from app.core.config import settings
 from app.core.logging_config import setup_logging
+from app.core.db import init_db
 from app.workers.gatekeeper.tasks import _process_webhook_message_internal
 
 
@@ -30,6 +31,14 @@ async def process_webhook_message(update_id: int, message_data: Dict[str, Any]):
         update_id: ID обновления от Telegram
         message_data: Данные сообщения в формате словаря
     """
-    await _process_webhook_message_internal(update_id, message_data)
+    # Инициализируем Tortoise ORM для воркера
+    await init_db()
+    
+    try:
+        await _process_webhook_message_internal(update_id, message_data)
+    finally:
+        # Закрываем соединения после обработки
+        from tortoise import Tortoise
+        await Tortoise.close_connections()
 
     

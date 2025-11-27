@@ -8,6 +8,7 @@ from typing import Optional
 
 from app.core.dramatiq_setup import redis_broker
 from app.services.openai_tools import OpenAIService
+from app.core.db import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,9 @@ async def process_chat_message(user_id: int, chat_id: int, message_text: str, us
         message_text: Текст сообщения
         user_name: Имя пользователя
     """
+    # Инициализируем Tortoise ORM для воркера
+    await init_db()
+    
     try:
         logger.info(f"Chat: обрабатываем сообщение от {user_name} (ID: {user_id})")
         
@@ -43,4 +47,8 @@ async def process_chat_message(user_id: int, chat_id: int, message_text: str, us
         
     except Exception as e:
         logger.error(f"Chat: ошибка обработки сообщения от пользователя {user_id}: {str(e)}")
+    finally:
+        # Закрываем соединения после обработки
+        from tortoise import Tortoise
+        await Tortoise.close_connections()
         raise

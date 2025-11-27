@@ -7,6 +7,7 @@ import logging
 import asyncio
 from app.core.dramatiq_setup import redis_broker
 from app.services.telegram_client import send_message as telegram_send_message
+from app.core.db import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,9 @@ async def send_telegram_message(chat_id: int, text: str):
         chat_id: ID чата для отправки
         text: Текст сообщения
     """
+    # Инициализируем Tortoise ORM для воркера
+    await init_db()
+    
     try:
         logger.info(f"Shared: отправляем сообщение в чат {chat_id}: '{text[:50]}...'")
         
@@ -57,3 +61,7 @@ async def send_telegram_message(chat_id: int, text: str):
     except Exception as e:
         logger.error(f"Shared: ошибка отправки сообщения в чат {chat_id}: {str(e)}")
         raise
+    finally:
+        # Закрываем соединения после обработки
+        from tortoise import Tortoise
+        await Tortoise.close_connections()
