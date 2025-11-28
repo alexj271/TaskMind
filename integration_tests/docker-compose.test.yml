@@ -1,0 +1,67 @@
+version: '3.9'
+services:
+  # API сервис для интеграционных тестов
+  api-test:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"  # Используем порт 8001 для тестов
+    environment:
+      - DATABASE_TYPE=sqlite
+      - DB_PATH=/tmp/test.db
+      - REDIS_URL=redis://redis-test:6379/1  # Используем базу 1 для тестов
+      - TELEGRAM_TOKEN=TEST_TOKEN
+      - GPT_MODEL=gpt-4.1-nano
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+    depends_on:
+      - redis-test
+    volumes:
+      - ./test_data:/tmp
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Dramatiq воркеры для интеграционных тестов
+  dramatiq-test:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_TYPE=sqlite
+      - DB_PATH=/tmp/test.db
+      - REDIS_URL=redis://redis-test:6379/1
+      - TELEGRAM_TOKEN=TEST_TOKEN
+      - GPT_MODEL=gpt-4.1-nano
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+    depends_on:
+      - redis-test
+    volumes:
+      - ./test_data:/tmp
+    command: ["dramatiq", "app.workers.actors"]
+
+  # Redis для интеграционных тестов (отдельный экземпляр)
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "6382:6379"  # Используем порт 6382 для тестового Redis
+    command: redis-server --appendonly yes --databases 16
+
+  # Контейнер для запуска интеграционных тестов
+  integration-tests:
+    build:
+      context: ..
+      dockerfile: integration_tests/Dockerfile.test
+    environment:
+      - API_URL=http://api-test:8000
+      - REDIS_URL=redis://redis-test:6379/1
+    depends_on:
+      - api-test
+      - dramatiq-test
+      - redis-test
+    volumes:
+      - ./reports:/app/integration_tests/reports
+      - ./test_data:/tmp
+    command: ["python", "integration_tests/run_integration_tests.py"]
+    profiles:
+      - test

@@ -1,0 +1,28 @@
+# Dockerfile для интеграционных тестов
+FROM python:3.12-slim
+
+# Установка системных зависимостей
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Создание рабочей директории
+WORKDIR /app
+
+# Копирование файлов зависимостей
+COPY requirements.txt requirements-prod.txt ./
+
+# Установка Python зависимостей
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копирование исходного кода
+COPY . .
+
+# Создание директорий для тестов
+RUN mkdir -p integration_tests/reports integration_tests/test_data
+
+# Установка прав на выполнение
+RUN chmod +x integration_tests/run_tests.sh
+
+# Команда по умолчанию
+CMD ["python", "integration_tests/run_integration_tests.py"]
