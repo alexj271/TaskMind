@@ -19,6 +19,7 @@
    - `aerich init-db`
 4. Запустить API: `uvicorn app.main:app --reload`.
 5. Запустить Dramatiq workers: `dramatiq app.workers.actors`.
+6. **Опционально**: Запустить polling бота: `python app/bot_pulling.py` (для тестирования без webhook).
 
 ## Структура
 ```

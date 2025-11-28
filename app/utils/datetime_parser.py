@@ -1,6 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from app.core.config import settings
+from app.core.config import get_settings
 from app.models.city import City
 
 # Словарь городов -> timezone (резервный, если БД недоступна)
@@ -107,4 +107,5 @@ async def extract_datetime(text: str) -> datetime | None:
     return None
 
 async def now_utc() -> datetime:
+    settings = get_settings()
     return datetime.now(tz=ZoneInfo(settings.timezone))

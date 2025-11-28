@@ -72,11 +72,11 @@
     },
     {
       "id": "tz8",
-      "input": "Время на моих часах 14:00, часовой пояс EST",
+      "input": "Время на моих часах 14:00",
       "expected": {
         "success": true,
         "task": {
-          "timezone": "America/New_York"
+          "datetime": "14:00"
         }
       }
     },

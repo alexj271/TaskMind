@@ -18,6 +18,7 @@ from unittest.mock import patch, MagicMock
 
 import httpx
 import uvicorn
+from tortoise import Tortoise
 from fastapi import FastAPI
 import redis.asyncio as redis
 

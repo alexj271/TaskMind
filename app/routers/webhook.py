@@ -3,44 +3,15 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import logging
 
-from app.workers.telegram_actors import process_webhook_message
+from app.workers.gatekeeper.tasks import process_webhook_message
+from app.schemas.telegram import TelegramUpdate
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Telegram Update модели
-class TelegramUser(BaseModel):
-    id: int
-    is_bot: bool = False
-    first_name: str
-    last_name: Optional[str] = None
-    username: Optional[str] = None
-
-
-class TelegramChat(BaseModel):
-    id: int
-    type: str
-    title: Optional[str] = None
-    username: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-
-
-class TelegramMessage(BaseModel):
-    message_id: int
-    from_: Optional[TelegramUser] = Field(None, alias="from")
-    chat: TelegramChat
-    date: int
-    text: Optional[str] = None
-    # Можно добавить другие поля по необходимости
-
-
-class TelegramUpdate(BaseModel):
-    update_id: int
-    message: Optional[TelegramMessage] = None
-    # Можно добавить другие типы обновлений: edited_message, callback_query и т.д.
+# Telegram Update модели теперь импортируются из app.schemas.telegram
 
 
 @router.post("/telegram", 

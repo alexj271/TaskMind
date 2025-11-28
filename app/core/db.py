@@ -1,5 +1,8 @@
 from tortoise import Tortoise
-from app.core.config import settings
+from app.core.config import get_settings
+
+# Получаем настройки
+settings = get_settings()
 
 TORTOISE_ORM = {
     "connections": {"default": settings.postgres_dsn},

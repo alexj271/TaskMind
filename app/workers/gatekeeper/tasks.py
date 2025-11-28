@@ -7,58 +7,26 @@ import dramatiq
 import logging
 from typing import Dict, Any
 from datetime import datetime
-from app.core.config import settings
+from app.core.config import get_settings
 from app.core.dramatiq_setup import redis_broker
 from app.services.openai_tools import OpenAIService
 from app.utils.prompt_manager import get_prompt, get_template
 from app.repositories.user_repository import UserRepository
 from app.repositories.dialog_repository import DialogRepository
+from app.repositories.task_repository import TaskRepository
 from app.utils.summarizer import generate_dialogue_summary
 from app.services.telegram_client import send_message as telegram_send_message
 from .models import IncomingMessage, MessageType, MessageClassification, ParsedTaskData
 from ..chat.tasks import process_chat_message
+from app.core.db import init_db
 from datetime import datetime
 
-
-async def update_dialog_summary(dialog_session):
-    """
-    Обновляет summary диалога по новой схеме:
-    1. Берем последнее summary и все сообщения
-    2. Отправляем в ИИ
-    3. Получаем новое summary
-    4. Оставляем только последние 2 сообщения в last_messages
-    """
-    # Собираем контекст для ИИ: summary + все сообщения
-    context_parts = []
-    if dialog_session.summary:
-        context_parts.append(f"Previous summary: {dialog_session.summary}")
-    
-    messages_text = []
-    for msg in dialog_session.last_messages:
-        if isinstance(msg, dict) and "content" in msg:
-            messages_text.append(msg["content"])
-    
-    if messages_text:
-        context_parts.append(f"Recent messages: {' | '.join(messages_text)}")
-    
-    context = "\n".join(context_parts)
-    
-    # Получаем новое summary от ИИ
-    new_summary = await generate_dialogue_summary(context)
-    
-    # Обновляем summary
-    dialog_repo = DialogRepository()
-    await dialog_repo.update_summary(dialog_session, new_summary)
-    
-    # Оставляем только последние 2 сообщения
-    if len(dialog_session.last_messages) > 2:
-        dialog_session.last_messages = dialog_session.last_messages[-2:]
-        await dialog_session.save()
 
 
 logger = logging.getLogger(__name__)
 
 # Инициализируем OpenAI сервис
+settings = get_settings()
 openai_service = OpenAIService(settings.gpt_model_fast)
 
 
@@ -124,6 +92,134 @@ tools_create_timezone = [
         }
     }
 ]
+
+
+async def create_gatekeeper_task(user_id: int, task: dict = None, error: dict = None):
+    """
+    Создает задачу или возвращает ошибку на основе данных от AI.
+    
+    Args:
+        user_id: ID пользователя Telegram
+        task: Данные задачи (title, datetime, timezone)
+        error: Данные ошибки (error_code, error_message)
+    
+    Returns:
+        dict: Результат операции с полем success
+    """
+    try:
+        if error:
+            logger.warning(f"Gatekeeper: AI вернул ошибку создания задачи: {error}")
+            return {
+                "success": False,
+                "error": error
+            }
+        
+        if not task:
+            logger.error("Gatekeeper: не переданы данные задачи или ошибки")
+            return {
+                "success": False,
+                "error": {
+                    "error_code": "INVALID_REQUEST",
+                    "error_message": "Не переданы данные задачи"
+                }
+            }
+        
+        # Получаем пользователя
+        user_repo = UserRepository()
+        user = await user_repo.get_by_telegram(user_id)
+        if not user:
+            logger.error(f"Gatekeeper: пользователь {user_id} не найден")
+            return {
+                "success": False,
+                "error": {
+                    "error_code": "USER_NOT_FOUND",
+                    "error_message": "Пользователь не найден"
+                }
+            }
+        
+        # Парсим дату и время
+        scheduled_at = None
+        if task.get("datetime"):
+            try:
+                scheduled_at = datetime.fromisoformat(task["datetime"])
+            except ValueError as e:
+                logger.error(f"Gatekeeper: ошибка парсинга даты {task['datetime']}: {e}")
+                return {
+                    "success": False,
+                    "error": {
+                        "error_code": "INVALID_DATETIME",
+                        "error_message": f"Неверный формат даты: {task['datetime']}"
+                    }
+                }
+        
+        # Создаем задачу
+        task_repo = TaskRepository()
+        created_task = await task_repo.create(
+            user_id=user.id,
+            title=task.get("title", "Без названия"),
+            description=None,  # Можно добавить позже
+            scheduled_at=scheduled_at,
+            reminder_at=None  # Можно добавить логику напоминаний позже
+        )
+        
+        logger.info(f"Gatekeeper: задача создана: {created_task.id} для пользователя {user_id}")
+        
+        return {
+            "success": True,
+            "task_id": str(created_task.id),
+            "task": {
+                "title": created_task.title,
+                "scheduled_at": created_task.scheduled_at.isoformat() if created_task.scheduled_at else None
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Gatekeeper: ошибка создания задачи для пользователя {user_id}: {str(e)}")
+        return {
+            "success": False,
+            "error": {
+                "error_code": "INTERNAL_ERROR",
+                "error_message": f"Внутренняя ошибка: {str(e)}"
+            }
+        }
+
+
+async def update_dialog_summary(dialog_session):
+    """
+    Обновляет summary диалога по новой схеме:
+    1. Берем последнее summary и все сообщения
+    2. Отправляем в ИИ
+    3. Получаем новое summary
+    4. Оставляем только последние 2 сообщения в last_messages
+    """
+    # Собираем контекст для ИИ: summary + все сообщения
+    context_parts = []
+    if dialog_session.summary:
+        context_parts.append(f"Previous summary: {dialog_session.summary}")
+    
+    messages_text = []
+    for msg in dialog_session.last_messages:
+        if isinstance(msg, dict) and "content" in msg:
+            messages_text.append(msg["content"])
+    
+    if messages_text:
+        context_parts.append(f"Recent messages: {' | '.join(messages_text)}")
+    
+    context = "\n".join(context_parts)
+    
+    # Получаем новое summary от ИИ
+    new_summary = await generate_dialogue_summary(context)
+    
+    # Обновляем summary
+    dialog_repo = DialogRepository()
+    await dialog_repo.update_summary(dialog_session, new_summary)
+    
+    # Оставляем только последние 2 сообщения
+    if len(dialog_session.last_messages) > 2:
+        dialog_session.last_messages = dialog_session.last_messages[-2:]
+        await dialog_session.save()
+
+
 
 
 async def process_webhook_message_internal(update_id: int, message_data: Dict[str, Any]):
@@ -197,10 +293,14 @@ async def process_timezone_message(user_id: int, message_text: str):
             prompt_name="timezone_parse",
             template_dir=str(Path(__file__).parent / "prompts"),
             current_datetime=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        )      
+        )
+
+        message_list = [
+            {"role": "user", "content": message_text}
+        ]      
         
         ai_response, function_call = await openai_service.chat_with_tools(
-            message_text,
+            message_list,
             user_id,
             system_prompt=gatekeeper_timezone_prompt,
             tools=tools_create_timezone
@@ -275,9 +375,18 @@ async def process_task_message(user_id: int, chat_id: int, message_text: str, us
             template_dir=str(Path(__file__).parent.parent / "prompts"),
             current_datetime=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             timezone=user_timezone
-        )      
+        )
+
+        message_list = [
+            {"role": "user", "content": message_text}
+        ]       
         
-        ai_response, function_call = await openai_service.chat_with_tools(message_text, user_id, tools=tools)
+        ai_response, function_call = await openai_service.chat_with_tools(
+            message_list,
+            user_id,
+            system_prompt=gatekeeper_task_prompt,
+            tools=tools
+        )
               
         if function_call and function_call.get("function_name") == "create_gatekeeper_task":
             # AI определил, что нужно создать задачу
@@ -285,20 +394,19 @@ async def process_task_message(user_id: int, chat_id: int, message_text: str, us
             logger.info(f"Gatekeeper: AI вызвал create_task с аргументами: {task_args}")
 
             # Вызываем функцию создания задачи
-            task_result = await create_gatekeeper_task(**task_args)
+            task_result = await create_gatekeeper_task(user_id, **task_args)
             
             if task_result.get("success"):
                 logger.info(f"Gatekeeper: задача создана успешно: {task_result}")
                 
                 # Отправляем подтверждение пользователю
-                from ..shared.tasks import send_telegram_message
-                confirmation_text = f"✅ Задача создана: {task_args.get('title', 'Без названия')}"
+                confirmation_text = f"✅ Задача создана: {task_result['task']['title']}"
                 
                 # Добавляем информацию о времени если есть
-                if task_args.get('datetime_start'):
+                if task_result['task'].get('scheduled_at'):
                     try:
-                        start_dt = datetime.fromisoformat(task_args['datetime_start'])
-                        confirmation_text += f"\n⏰ Запланировано на: {start_dt.strftime('%d.%m.%Y %H:%M')}"
+                        scheduled_dt = datetime.fromisoformat(task_result['task']['scheduled_at'])
+                        confirmation_text += f"\n⏰ Запланировано на: {scheduled_dt.strftime('%d.%m.%Y %H:%M')}"
                     except ValueError:
                         pass
                 await telegram_send_message(chat_id, confirmation_text)
@@ -315,12 +423,8 @@ async def process_task_message(user_id: int, chat_id: int, message_text: str, us
             else:
                 logger.error(f"Gatekeeper: ошибка создания задачи: {task_result}")
                 # В случае ошибки отправляем уведомление об ошибке в Telegram
-                from ..shared.tasks import send_telegram_message
                 error_text = "❌ Произошла ошибка при создании задачи. Попробуйте еще раз."
-                await send_telegram_message.send(
-                    chat_id=chat_id,
-                    text=error_text
-                )
+                await telegram_send_message(chat_id, error_text)
                 
                 # Добавляем ответ ассистента в историю диалога
                 from app.repositories.user_repository import UserRepository
@@ -352,12 +456,31 @@ async def process_task_message(user_id: int, chat_id: int, message_text: str, us
         logger.error(f"Gatekeeper: ошибка обработки сообщения от пользователя {user_id}: {str(e)}")
         # В случае ошибки отправляем уведомление об ошибке в Telegram
         try:
-            from ..shared.tasks import send_telegram_message
             error_text = "❌ Произошла ошибка при обработке сообщения. Попробуйте еще раз."
-            await send_telegram_message.send(
-                chat_id=chat_id,
-                text=error_text
-            )
+            await telegram_send_message(chat_id, error_text)
         except Exception as telegram_error:
             logger.error(f"Gatekeeper: не удалось отправить уведомление об ошибке в Telegram: {telegram_error}")
         
+
+
+@dramatiq.actor(max_retries=3, min_backoff=1000, max_backoff=30000)
+async def process_webhook_message(update_id: int, message_data: Dict[str, Any]):
+    """
+    Главная точка входа для всех webhook сообщений.
+    Логирует историю сообщений и запускает классификацию.
+    
+    Args:
+        update_id: ID обновления от Telegram
+        message_data: Данные сообщения в формате словаря
+    """
+    print(f"Gatekeeper: получено сообщение update_id={update_id}", message_data)
+
+    # Инициализируем Tortoise ORM для воркера
+    await init_db()    
+    
+    try:
+        await process_webhook_message_internal(update_id, message_data)
+    finally:
+        # Закрываем соединения после обработки
+        from tortoise import Tortoise
+        await Tortoise.close_connections()

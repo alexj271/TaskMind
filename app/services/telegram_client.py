@@ -4,7 +4,7 @@ Telegram Bot API Client для отправки сообщений
 import httpx
 import logging
 from typing import Optional, Dict, Any
-from app.core.config import settings
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,8 @@ class TelegramClient:
     """Клиент для работы с Telegram Bot API"""
     
     def __init__(self, bot_token: str = None):
-        self.bot_token = bot_token or settings.telegram_bot_token
+        settings = get_settings()
+        self.bot_token = bot_token or settings.telegram_token
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
         self.timeout = 30.0
         

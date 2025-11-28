@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 openai_service = OpenAIService()
 
 
-@dramatiq.actor(broker=redis_broker, max_retries=2, min_backoff=2000, max_backoff=60000)
+@dramatiq.actor(max_retries=2, min_backoff=2000, max_backoff=60000)
 async def process_chat_message(user_id: int, chat_id: int, message_text: str, user_name: str):
     """
     Обрабатывает разговорное сообщение и генерирует ответ.

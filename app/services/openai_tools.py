@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from openai import AsyncOpenAI
-from app.core.config import settings
+from app.core.config import get_settings
 from app.schemas.task import ParsedTask
 from app.utils.prompt_manager import prompt_manager
 from app.services.tools import TOOL_SCHEMAS
@@ -10,6 +10,7 @@ from app.services.tools import TOOL_SCHEMAS
 
 class OpenAIService:
     def __init__(self, gpt_model: str = None):
+        settings = get_settings()
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required for AI services")
         
@@ -39,24 +40,24 @@ class OpenAIService:
         except Exception as e:
             raise RuntimeError(f"OpenAI API error: {str(e)}")
 
-    async def chat_with_tools(self, message: str, user_id: int, system_prompt: str = None, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
+    async def chat_with_tools(self, history_messages: List[Dict[str, Any]], user_id: int, system_prompt: str = None, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
         """
         Чат с AI используя function calling.
         Возвращает tuple: (ответ, вызванная_функция_с_аргументами или None)
         """
         if tools is None:
             tools = TOOL_SCHEMAS
+
+        messages = [
+            {"role": "system", "content": system_prompt},       
+        ]
+
+        messages = messages + history_messages
         
-        if system_prompt is None:
-            system_prompt = prompt_manager.render("chat_assistant")
-            
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": message}
-                ],
+                messages=messages,
                 tools=tools,
                 tool_choice="auto",  # Оставляем auto, но с улучшенным промптом
                 max_tokens=400,

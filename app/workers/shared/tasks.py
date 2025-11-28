@@ -12,7 +12,7 @@ from app.core.db import init_db
 logger = logging.getLogger(__name__)
 
 
-@dramatiq.actor(broker=redis_broker, max_retries=1)
+@dramatiq.actor(max_retries=1)
 async def schedule_task_reminder(user_id: int, chat_id: int, task_title: str, deadline_timestamp: int):
     """
     Отправляет напоминание о задаче пользователю.

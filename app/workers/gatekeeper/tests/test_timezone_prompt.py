@@ -66,7 +66,7 @@ def create_test_method(test_case: Dict[str, Any]):
         
         # Вызываем AI с промптом и tools
         response, function_call = await openai_service.chat_with_tools(
-            message=input_text,
+            history_messages=[{"role": "user", "content": input_text}],
             user_id=12345,
             system_prompt=system_prompt,
             tools=tools

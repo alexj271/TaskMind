@@ -4,7 +4,7 @@ services:
   api-test:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: integration_tests/Dockerfile.test
     ports:
       - "8001:8000"  # Используем порт 8001 для тестов
     environment:
@@ -25,7 +25,7 @@ services:
   dramatiq-test:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: integration_tests/Dockerfile.test
     environment:
       - DATABASE_TYPE=sqlite
       - DB_PATH=/tmp/test.db
@@ -38,7 +38,7 @@ services:
       - redis-test
     volumes:
       - ./test_data:/tmp
-    command: ["dramatiq", "app.workers.actors"]
+    command: ["sh", "-c", "REDIS_URL=${REDIS_URL} dramatiq app.workers.actors"]
 
   # Redis для интеграционных тестов (отдельный экземпляр)
   redis-test:

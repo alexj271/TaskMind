@@ -23,6 +23,21 @@ cd integration_tests
 ./run_docker_tests.sh
 ```
 
+### Опции запуска
+
+**Основной скрипт (`run_docker_tests.sh`):**
+```bash
+./run_docker_tests.sh              # Пересборка + запуск (по умолчанию)
+./run_docker_tests.sh --no-build   # Запуск без пересборки (быстрее)
+./run_docker_tests.sh --build      # Явная пересборка
+```
+
+**Альтернативный скрипт (`run_docker_tests_alt.sh`):**
+```bash
+./run_docker_tests_alt.sh          # Запуск без пересборки
+./run_docker_tests_alt.sh --build  # С пересборкой
+```
+
 ### Локальный запуск (для разработки)
 
 ```bash
@@ -38,6 +53,29 @@ cd /home/alex/project/vscode/TaskMind
 source .venv/bin/activate
 python integration_tests/quick_test.py
 ```
+
+## Конфигурация
+
+### Переменные окружения
+
+Создайте `.env` файл в корне проекта на основе `.env.example`:
+
+```bash
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_BASE_URL=https://api.openai.com/v1
+TELEGRAM_TOKEN=TEST_TOKEN
+```
+
+**Обязательные переменные:**
+- `OPENAI_API_KEY` - API ключ для OpenAI (необходим для AI функций)
+- `OPENAI_BASE_URL` - Базовый URL для OpenAI API
+
+**Опциональные переменные:**
+- `TELEGRAM_TOKEN` - Токен Telegram бота (по умолчанию: TEST_TOKEN)
+
+### Параметры тестов
+
+Файл `test_config.ini` содержит настройки таймаутов и сценариев.
 
 ## Архитектура
 

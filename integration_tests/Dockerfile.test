@@ -15,8 +15,10 @@ COPY requirements.txt requirements-prod.txt ./
 # Установка Python зависимостей
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование исходного кода
+# Копирование исходного кода (исключая .env файл)
 COPY . .
+# Удаляем .env файл, чтобы он не конфликтовал с переменными окружения из Docker Compose
+RUN rm -f .env
 
 # Создание директорий для тестов
 RUN mkdir -p integration_tests/reports integration_tests/test_data
