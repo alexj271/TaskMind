@@ -121,6 +121,7 @@ async def import_cities(zip_path, data_dir):
                 print(row[1], population)
                 city = City(
                     name=row[1],  # name
+                    alternatenames=row[3] if row[3] else None,  # alternatenames
                     timezone=row[17] if row[17] else None,  # timezone
                     country_code=row[8] if row[8] else None,  # country_code
                     population=population,

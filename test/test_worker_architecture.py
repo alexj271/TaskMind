@@ -141,10 +141,11 @@ class TestWorkerArchitecture:
         """Проверка что все воркеры импортируются корректно"""
         # Проверяем что можем импортировать все основные компоненты
         from app.workers.gatekeeper.tasks import process_webhook_message_internal
+        from app.workers.gatekeeper.tasks import process_webhook_message
         from app.workers.chat.tasks import process_chat_message
         from app.workers.shared.tasks import schedule_task_reminder
-        from app.workers.telegram_actors import process_webhook_message
         
+        assert process_webhook_message is not None
         assert process_webhook_message is not None
         assert process_webhook_message_internal is not None
         assert process_chat_message is not None

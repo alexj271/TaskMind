@@ -11,19 +11,23 @@ async def test_detect_timezone_by_city():
     """Тест определения timezone по городу"""
     from tortoise import Tortoise
     from app.core.db import TORTOISE_ORM
-    
+    from app.models.city import City
+
     await Tortoise.init(config=TORTOISE_ORM)
-    
+
     try:
-        result = await detect_timezone(city="Moscow")
+        result = await detect_timezone(city="Москва")
         assert result == "UTC+3"
 
-        result = await detect_timezone(city="Ufa")
+        result = await detect_timezone(city="Уфа")
         assert result == "UTC+5"
-        
+
+        result = await detect_timezone(city="Бирск")
+        assert result == "UTC+5"
+
         result = await detect_timezone(city="New York City")
         assert result == "UTC-5"  # Или UTC-4 в зависимости от DST, но для простоты
-        
+
         result = await detect_timezone(city="Tokyo")
         assert result == "UTC+9"
     finally:

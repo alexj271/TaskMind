@@ -2,6 +2,7 @@ from tortoise import fields, models
 
 class City(models.Model):
     name = fields.CharField(max_length=200)
+    alternatenames = fields.TextField(null=True)  # Альтернативные названия города
     timezone = fields.CharField(max_length=50, null=True)
     country_code = fields.CharField(max_length=2, null=True)
     population = fields.IntField(null=True)
@@ -12,4 +13,5 @@ class City(models.Model):
         table = "cities"
         indexes = [
             models.Index(fields=["name"], name="idx_city_name"),
+            models.Index(fields=["alternatenames"], name="idx_city_alternatenames"),
         ]

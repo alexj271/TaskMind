@@ -72,3 +72,6 @@ def reset_settings():
     """Сбросить кэшированные настройки (для тестирования)"""
     global settings
     settings = None
+
+
+settings = get_settings()

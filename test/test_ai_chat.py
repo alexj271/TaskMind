@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app.core.config import settings
+from app.core.config import get_settings
 from app.services.openai_tools import chat, parse_task, get_openai_service
 from app.schemas.task import ParsedTask
 from app.models.task import Task
@@ -84,18 +84,18 @@ class TestOpenAIIntegration:
     async def test_openai_service_requires_api_key(self):
         """Тест: сервис требует API key"""
         # Временно обнуляем ключ
-        original_key = settings.openai_api_key
-        settings.openai_api_key = None
+        original_key = get_settings().openai_api_key
+        get_settings().openai_api_key = None
         
         with pytest.raises(ValueError, match="OPENAI_API_KEY is required"):
             get_openai_service()
         
         # Восстанавливаем ключ
-        settings.openai_api_key = original_key
+        get_settings().openai_api_key = original_key
 
     @pytest.mark.requires_api_key
     @pytest.mark.skipif(
-        not settings.openai_api_key or settings.openai_api_key == "TEST_TOKEN",
+        not get_settings().openai_api_key or get_settings().openai_api_key == "TEST_TOKEN",
         reason="Нужен реальный OPENAI_API_KEY для интеграционного теста"
     )
     @pytest.mark.asyncio
@@ -109,7 +109,7 @@ class TestOpenAIIntegration:
 
     @pytest.mark.requires_api_key
     @pytest.mark.skipif(
-        not settings.openai_api_key or settings.openai_api_key == "TEST_TOKEN",
+        not get_settings().openai_api_key or get_settings().openai_api_key == "TEST_TOKEN",
         reason="Нужен реальный OPENAI_API_KEY для интеграционного теста"
     )
     @pytest.mark.asyncio
@@ -139,7 +139,7 @@ class TestOpenAIIntegration:
     @pytest.mark.requires_api_key
     @pytest.mark.database
     @pytest.mark.skipif(
-        not settings.openai_api_key or settings.openai_api_key == "TEST_TOKEN",
+        not get_settings().openai_api_key or get_settings().openai_api_key == "TEST_TOKEN",
         reason="Нужен реальный OPENAI_API_KEY для интеграционного теста"
     )
     @pytest.mark.asyncio
@@ -194,8 +194,8 @@ class TestOpenAIIntegration:
     async def test_fallback_parsing_without_api_key(self):
         """Тест: fallback парсинг без API ключа"""
         # Временно обнуляем ключ
-        original_key = settings.openai_api_key
-        settings.openai_api_key = None
+        original_key = get_settings().openai_api_key
+        get_settings().openai_api_key = None
         
         # Сбрасываем глобальный сервис
         import app.services.openai_tools
@@ -207,7 +207,7 @@ class TestOpenAIIntegration:
                 await parse_task("тестовая задача")
         finally:
             # Восстанавливаем ключ
-            settings.openai_api_key = original_key
+            get_settings().openai_api_key = original_key
             app.services.openai_tools._openai_service = None
 
     def test_parsed_task_schema_validation(self):
@@ -237,7 +237,7 @@ class TestOpenAIIntegration:
 
     @pytest.mark.requires_api_key
     @pytest.mark.skipif(
-        not settings.openai_api_key or settings.openai_api_key == "TEST_TOKEN",
+        not get_settings().openai_api_key or get_settings().openai_api_key == "TEST_TOKEN",
         reason="Нужен реальный OPENAI_API_KEY для интеграционного теста"
     )
     @pytest.mark.asyncio

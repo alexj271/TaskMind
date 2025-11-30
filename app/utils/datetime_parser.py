@@ -1,5 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from tortoise import models
 from app.core.config import get_settings
 from app.models.city import City
 
@@ -47,7 +48,11 @@ async def detect_timezone(city: str = None, current_time: str = None, timezone_s
     if city and not detected_tz:
         # Сначала пытаемся найти в БД
         try:
-            city_obj = await City.filter(name__iexact=city.strip()).first()
+            # Ищем по основному имени или альтернативным названиям
+            city_obj = await City.filter(
+                models.Q(name__iexact=city.strip()) | 
+                models.Q(alternatenames__icontains=city.strip())
+            ).first()
             if city_obj and city_obj.timezone:
                 detected_tz = city_obj.timezone
         except:

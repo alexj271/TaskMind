@@ -17,15 +17,6 @@ from app.utils.prompt_manager import PromptManager
 # Настройка логирования
 logger = logging.getLogger(__name__)
 
-# Преобразуем tools в формат OpenAI function calling
-tools = [
-    {
-        "type": "function",
-        "function": tool
-    }
-    for tool in timezone_tools
-]
-
 
 def load_timezone_prompt() -> str:
     """Загружает промпт timezone_parse.md с параметрами времени"""
@@ -69,7 +60,7 @@ def create_test_method(test_case: Dict[str, Any]):
             history_messages=[{"role": "user", "content": input_text}],
             user_id=12345,
             system_prompt=system_prompt,
-            tools=tools
+            tools=timezone_tools
         )
         
         # Проверяем что AI вызвал функцию

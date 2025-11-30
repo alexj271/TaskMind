@@ -1,11 +1,16 @@
 import json
 from datetime import datetime, timedelta
+import logging
+import traceback
 from typing import Optional, Dict, Any, List
 from openai import AsyncOpenAI
 from app.core.config import get_settings
 from app.schemas.task import ParsedTask
 from app.utils.prompt_manager import prompt_manager
 from app.services.tools import TOOL_SCHEMAS
+
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIService:
@@ -45,16 +50,26 @@ class OpenAIService:
         Чат с AI используя function calling.
         Возвращает tuple: (ответ, вызванная_функция_с_аргументами или None)
         """
-        if tools is None:
-            tools = TOOL_SCHEMAS
-
-        messages = [
-            {"role": "system", "content": system_prompt},       
-        ]
-
-        messages = messages + history_messages
         
         try:
+            if tools is None:
+                tools = TOOL_SCHEMAS
+            else:
+                # Добавляем только схемы указанных tools
+                tools = [
+                    {
+                        "type": "function",
+                        "function": tool
+                    }
+                    for tool in tools
+                ]
+        
+            messages = [
+                {"role": "system", "content": system_prompt},       
+            ]
+
+            messages = messages + history_messages
+
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -63,7 +78,7 @@ class OpenAIService:
                 max_tokens=400,
                 temperature=0.3  # Снижаем температуру для более точного следования инструкциям
             )
-            
+           
             message_response = response.choices[0].message
             
             # Проверяем был ли вызов функции
@@ -85,6 +100,7 @@ class OpenAIService:
             return message_response.content or "", None
             
         except Exception as e:
+            logger.exception("OpenAI API error in chat_with_tools")
             raise RuntimeError(f"OpenAI API error: {str(e)}")
 
     async def parse_task(self, text: str, timezone: str = "Europe/Moscow") -> ParsedTask:
