@@ -103,7 +103,104 @@ class OpenAIService:
             logger.exception("OpenAI API error in chat_with_tools")
             raise RuntimeError(f"OpenAI API error: {str(e)}")
 
-    async def generate_response_with_tools(self, messages: List[Dict[str, Any]], tools: Dict[str, Any], max_tokens: int = 1000) -> Dict[str, Any]:
+    async def parse_task(self, text: str, timezone: str = "Europe/Moscow") -> ParsedTask:
+        """
+        Парсит естественный язык в структурированную задачу.
+        Пример: "завтра встреча с коллегой в 8 утра" -> ParsedTask с title, scheduled_at, etc.
+        """
+        current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Загружаем промпт из шаблона
+        system_prompt = prompt_manager.render(
+            "task_parser",
+            current_date=current_date,
+            timezone=timezone
+        )
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text}
+                ],
+                max_tokens=200,
+                temperature=0.1  # Низкая температура для более предсказуемых результатов
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            # Парсим JSON ответ
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                # Fallback: если JSON некорректный, создаем базовую задачу
+                return ParsedTask(
+                    title=text[:50],
+                    description=None,
+                    scheduled_at=None,
+                    reminder_at=None
+                )
+            
+            # Конвертируем строки в datetime объекты
+            scheduled_at = None
+            reminder_at = None
+            
+            if data.get("scheduled_at"):
+                try:
+                    scheduled_at = datetime.fromisoformat(data["scheduled_at"].replace("Z", "+00:00"))
+                except ValueError:
+                    pass
+                    
+            if data.get("reminder_at"):
+                try:
+                    reminder_at = datetime.fromisoformat(data["reminder_at"].replace("Z", "+00:00"))
+                except ValueError:
+                    pass
+            
+            return ParsedTask(
+                title=data.get("title", text[:50]),
+                description=data.get("description"),
+                scheduled_at=scheduled_at,
+                reminder_at=reminder_at
+            )
+            
+        except Exception as e:
+            # В случае ошибки возвращаем базовую задачу
+            return ParsedTask(
+                title=text[:50],
+                description=f"Ошибка парсинга: {str(e)}",
+                scheduled_at=None,
+                reminder_at=None
+            )
+
+
+# Глобальный экземпляр сервиса
+_openai_service: Optional[OpenAIService] = None
+
+
+def get_openai_service() -> OpenAIService:
+    """Dependency injection для OpenAI сервиса"""
+    global _openai_service
+    if _openai_service is None:
+        _openai_service = OpenAIService()
+    return _openai_service
+
+
+# Удобные функции для прямого использования
+async def chat(message: str) -> str:
+    """Простой чат с AI"""
+    service = get_openai_service()
+    return await service.chat(message)
+
+
+async def chat_with_tools(message: str, user_id: int, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Чат с AI используя function calling"""
+    service = get_openai_service()
+    return await service.chat_with_tools(message, user_id, tools)
+
+
+async def generate_response_with_tools(self, messages: List[Dict[str, Any]], tools: Dict[str, Any], max_tokens: int = 1000) -> Dict[str, Any]:
         """
         Генерирует ответ с поддержкой function calling.
         
@@ -315,34 +412,3 @@ class OpenAIService:
                 scheduled_at=None,
                 reminder_at=None
             )
-
-
-# Глобальный экземпляр сервиса
-_openai_service: Optional[OpenAIService] = None
-
-
-def get_openai_service() -> OpenAIService:
-    """Dependency injection для OpenAI сервиса"""
-    global _openai_service
-    if _openai_service is None:
-        _openai_service = OpenAIService()
-    return _openai_service
-
-
-# Удобные функции для прямого использования
-async def chat(message: str) -> str:
-    """Простой чат с AI"""
-    service = get_openai_service()
-    return await service.chat(message)
-
-
-async def chat_with_tools(message: str, user_id: int, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
-    """Чат с AI используя function calling"""
-    service = get_openai_service()
-    return await service.chat_with_tools(message, user_id, tools)
-
-
-async def parse_task(text: str, timezone: str = "Europe/Moscow") -> ParsedTask:
-    """Парсинг текста задачи через AI"""
-    service = get_openai_service()
-    return await service.parse_task(text, timezone)

@@ -15,17 +15,33 @@ CITY_TIMEZONE_MAP = {
     # Добавить больше по необходимости
 }
 
-async def detect_timezone(city: str = None, current_time: str = None, timezone_str: str = None) -> str | None:
+class AmbiguousCityError(Exception):
+    """Исключение для случаев, когда найдено несколько городов с одним названием"""
+    def __init__(self, city_name: str, cities_info: list):
+        self.city_name = city_name
+        self.cities_info = cities_info
+        message = f"Найдено {len(cities_info)} городов с названием '{city_name}':\n"
+        for info in cities_info:
+            message += f"- {info['name']}, {info['country_code']} (timezone: {info['timezone']})\n"
+        message += "Пожалуйста, укажите страну для точного определения."
+        super().__init__(message)
+
+
+async def detect_timezone(city: str = None, country: str = None, current_time: str = None, timezone_str: str = None) -> str | None:
     """
     Определяет часовой пояс в формате UTC+X на основе города, текущего времени или строки timezone.
     
     Args:
         city: Название города
+        country: Код страны (ISO 2-буквенный) для точного определения города
         current_time: Текущее время в формате HH:MM
         timezone_str: Строка часового пояса (IANA или UTC+X)
     
     Returns:
         Часовой пояс в формате UTC+X или None если не удалось определить
+        
+    Raises:
+        AmbiguousCityError: Если найдено несколько городов с одним названием и не указана страна
     """
     if not any([city, current_time, timezone_str]):
         return None
@@ -49,12 +65,42 @@ async def detect_timezone(city: str = None, current_time: str = None, timezone_s
         # Сначала пытаемся найти в БД
         try:
             # Ищем по основному имени или альтернативным названиям
-            city_obj = await City.filter(
-                models.Q(name__iexact=city.strip()) | 
-                models.Q(alternatenames__icontains=city.strip())
-            ).first()
-            if city_obj and city_obj.timezone:
-                detected_tz = city_obj.timezone
+            query = models.Q(name__iexact=city.strip()) | models.Q(alternatenames__icontains=city.strip())
+            
+            # Если указана страна, добавляем фильтр
+            if country:
+                query &= models.Q(country_code__iexact=country.strip())
+            
+            cities = await City.filter(query).all()
+            
+            if len(cities) == 0:
+                # Город не найден в БД, используем словарь
+                detected_tz = CITY_TIMEZONE_MAP.get(city.strip().title())
+            elif len(cities) == 1:
+                # Найден один город
+                city_obj = cities[0]
+                if city_obj.timezone:
+                    detected_tz = city_obj.timezone
+            else:
+                # Найдено несколько городов с одним названием
+                if not country:
+                    # Если страна не указана, возвращаем ошибку с информацией о найденных городах
+                    cities_info = [
+                        {
+                            'name': city_obj.name,
+                            'country_code': city_obj.country_code,
+                            'timezone': city_obj.timezone
+                        }
+                        for city_obj in cities
+                    ]
+                    raise AmbiguousCityError(city.strip(), cities_info)
+                # Если страна указана, но всё ещё несколько результатов, берём первый
+                city_obj = cities[0]
+                if city_obj.timezone:
+                    detected_tz = city_obj.timezone
+        except AmbiguousCityError:
+            # Перебрасываем исключение выше
+            raise
         except:
             # Если БД недоступна, используем словарь
             detected_tz = CITY_TIMEZONE_MAP.get(city.strip().title())

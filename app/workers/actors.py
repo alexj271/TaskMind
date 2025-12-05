@@ -10,8 +10,8 @@ broker = init_dramatiq()
 print(f"Брокер инициализирован: {broker}")
 
 # Импортируем все воркеры для их регистрации
-#from . import chat
-#from . import shared
 import app.workers.gatekeeper.tasks
+import app.workers.chat.tasks
+import app.workers.shared.tasks
 
 # Все воркеры теперь зарегистрированы в Dramatiq
