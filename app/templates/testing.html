@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskMind - Тестовый интерфейс</title>
+    <!-- Markdown поддержка -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 1.5rem;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .connection-status {
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .connected {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .disconnected {
+            background: #f44336;
+            color: white;
+        }
+        
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 1rem;
+            padding: 1rem;
+            height: calc(100vh - 80px);
+        }
+        
+        .chat-panel {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .results-panel {
+            flex: 1.5;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .panel-header {
+            padding: 1rem;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+            color: #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .message {
+            padding: 0.8rem 1rem;
+            border-radius: 10px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        /* Markdown стили в сообщениях */
+        .message h1, .message h2, .message h3, .message h4, .message h5, .message h6 {
+            margin: 0.5rem 0;
+            font-weight: bold;
+        }
+        
+        .message h1 { font-size: 1.3rem; }
+        .message h2 { font-size: 1.2rem; }
+        .message h3 { font-size: 1.1rem; }
+        .message h4, .message h5, .message h6 { font-size: 1rem; }
+        
+        .message p {
+            margin: 0.3rem 0;
+        }
+        
+        .message strong, .message b {
+            font-weight: bold;
+        }
+        
+        .message em, .message i {
+            font-style: italic;
+        }
+        
+        .message code {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .message pre {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 0.8rem;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        
+        .message pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        .message ul, .message ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+        
+        .message li {
+            margin: 0.2rem 0;
+        }
+        
+        .message blockquote {
+            border-left: 3px solid rgba(0, 0, 0, 0.2);
+            margin: 0.5rem 0;
+            padding-left: 1rem;
+            font-style: italic;
+            color: #666;
+        }
+        
+        .message a {
+            color: #1976d2;
+            text-decoration: none;
+        }
+        
+        .message a:hover {
+            text-decoration: underline;
+        }
+        
+        .message hr {
+            border: none;
+            border-top: 1px solid rgba(0, 0, 0, 0.2);
+            margin: 0.8rem 0;
+        }
+        
+        .message table {
+            border-collapse: collapse;
+            margin: 0.5rem 0;
+            width: 100%;
+        }
+        
+        .message th, .message td {
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            padding: 0.3rem 0.5rem;
+            text-align: left;
+        }
+        
+        .message th {
+            background: rgba(0, 0, 0, 0.05);
+            font-weight: bold;
+        }
+        
+        .user-message {
+            background: #e3f2fd;
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .system-message {
+            background: #f5f5f5;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .error-message {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            align-self: center;
+        }
+        
+        .bot-message {
+            background: #e8f5e8;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .testing-info {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 0.8rem;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+        
+        .chat-input-container {
+            padding: 1rem;
+            border-top: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .user-config {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .user-config input {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .message-input-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 0.8rem;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .chat-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+        }
+        
+        .send-btn {
+            padding: 0.8rem 1.5rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        .send-btn:hover {
+            background: #5a67d8;
+        }
+        
+        .send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .results-content {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+        
+        .result-item {
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            padding: 1rem;
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .timestamp {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        .section {
+            margin-bottom: 1rem;
+        }
+        
+        .section-title {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.3rem;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .user-info {
+            background: #e8f5e8;
+            padding: 0.5rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .task-item {
+            background: #fff3cd;
+            padding: 0.5rem;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .task-description {
+            margin-top: 0.3rem;
+            padding: 0.3rem;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+        
+        .task-description p {
+            margin: 0.2rem 0;
+        }
+        
+        .task-description code {
+            background: rgba(0, 0, 0, 0.15);
+        }
+        
+        .dialog-info {
+            background: #e7f1ff;
+            padding: 0.5rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .clear-btn {
+            padding: 0.5rem 1rem;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        
+        .clear-btn:hover {
+            background: #d32f2f;
+        }
+        
+        .json-view {
+            background: #f5f5f5;
+            padding: 0.5rem;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            .user-config {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 TaskMind Testing Interface</h1>
+        <div class="status">
+            <div class="connection-status connected">🔍 Тестирование</div>
+            <div id="connectionStatus" class="connection-status disconnected">Отключено</div>
+            <button class="clear-btn" onclick="clearResults()">Очистить результаты</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Левая панель - Чат -->
+        <div class="chat-panel">
+            <div class="panel-header">
+                💬 Тестовый чат
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="system-message">
+                    Добро пожаловать в тестовый интерфейс TaskMind!<br>
+                    Настройте пользователя и начните отправлять сообщения.
+                </div>
+                <div class="testing-info">
+                    🔍 <strong>Режим тестирования:</strong> Сообщения от бота будут отображаться здесь вместо отправки в Telegram.<br>
+                    📝 <strong>Markdown поддержка:</strong> Ответы бота форматируются с поддержкой **жирного текста**, *курсива*, `кода`, списков и других элементов Markdown.
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <div class="user-config">
+                    <input type="number" id="userId" placeholder="User ID" value="12345">
+                    <input type="text" id="userName" placeholder="User Name" value="TestUser">
+                    <input type="text" id="sessionId" placeholder="Session ID" value="default">
+                </div>
+                <div class="message-input-row">
+                    <input type="text" 
+                           id="messageInput" 
+                           class="chat-input" 
+                           placeholder="Введите сообщение... (ответы бота поддерживают Markdown)"
+                           onkeypress="handleKeyPress(event)">
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()">Отправить</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Правая панель - Результаты -->
+        <div class="results-panel">
+            <div class="panel-header">
+                📊 Результаты тестирования
+                <span class="timestamp" id="lastUpdate"></span>
+            </div>
+            <div class="results-content" id="resultsContent">
+                <div class="loading">Результаты будут отображаться здесь после отправки сообщений</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let sessionId = 'default';
+        let isConnected = false;
+        
+        // Инициализация WebSocket соединения
+        function initWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/testing/ws`;
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = function(event) {
+                console.log('WebSocket подключен');
+                isConnected = true;
+                updateConnectionStatus();
+            };
+            
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+            
+            socket.onclose = function(event) {
+                console.log('WebSocket отключен');
+                isConnected = false;
+                updateConnectionStatus();
+                // Переподключение через 3 секунды
+                setTimeout(initWebSocket, 3000);
+            };
+            
+            socket.onerror = function(error) {
+                console.error('WebSocket ошибка:', error);
+                isConnected = false;
+                updateConnectionStatus();
+            };
+        }
+        
+        // Обработка сообщений от WebSocket
+        function handleWebSocketMessage(data) {
+            console.log('Получено сообщение:', data);
+            
+            switch(data.type) {
+                case 'message_processed':
+                    addChatMessage('Сообщение обработано ✅', 'system');
+                    break;
+                case 'error':
+                    addChatMessage(`Ошибка: ${data.message}`, 'error');
+                    break;
+                case 'bot_message':
+                    addChatMessage(`🤖 **Бот:** ${data.text}`, 'bot');
+                    break;
+                case 'test_results':
+                    addTestResult(data);
+                    break;
+                case 'all_test_results':
+                    displayAllResults(data.results);
+                    break;
+            }
+        }
+        
+        // Обновление статуса подключения
+        function updateConnectionStatus() {
+            const statusElement = document.getElementById('connectionStatus');
+            if (isConnected) {
+                statusElement.textContent = 'Подключено';
+                statusElement.className = 'connection-status connected';
+                document.getElementById('sendBtn').disabled = false;
+            } else {
+                statusElement.textContent = 'Отключено';
+                statusElement.className = 'connection-status disconnected';
+                document.getElementById('sendBtn').disabled = true;
+            }
+        }
+        
+        // Отправка сообщения
+        function sendMessage() {
+            if (!isConnected || !socket) {
+                alert('WebSocket не подключен');
+                return;
+            }
+            
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message) {
+                alert('Введите сообщение');
+                return;
+            }
+            
+            const userId = parseInt(document.getElementById('userId').value) || 12345;
+            const userName = document.getElementById('userName').value || 'TestUser';
+            sessionId = document.getElementById('sessionId').value || 'default';
+            
+            // Добавляем сообщение в чат
+            addChatMessage(message, 'user');
+            
+            // Отправляем через WebSocket
+            const data = {
+                type: 'send_message',
+                user_id: userId,
+                user_name: userName,
+                session_id: sessionId,
+                message: message,
+                chat_id: userId
+            };
+            
+            socket.send(JSON.stringify(data));
+            
+            // Очищаем поле ввода
+            messageInput.value = '';
+        }
+        
+        // Добавление сообщения в чат
+        function addChatMessage(message, type) {
+            const messagesContainer = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            
+            messageDiv.className = `message ${type}-message`;
+            
+            // Форматируем сообщение в зависимости от типа
+            let formattedMessage;
+            if (type === 'bot' || type === 'system') {
+                // Для сообщений бота и системных применяем Markdown
+                // Убираем префикс "🤖 Бот: " если он есть
+                const cleanMessage = message.replace(/^🤖 Бот:\s*/, '');
+                formattedMessage = marked.parse(cleanMessage);
+            } else {
+                // Для пользовательских сообщений применяем базовое экранирование HTML
+                formattedMessage = escapeHtml(message);
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">${formattedMessage}</div>
+                <div style="font-size: 0.8rem; color: #666; margin-top: 0.3rem;">
+                    ${new Date().toLocaleTimeString()}
+                </div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Функция экранирования HTML
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;")
+                .replace(/\n/g, "<br>");
+        }
+        
+        // Добавление результата тестирования
+        function addTestResult(result) {
+            const resultsContainer = document.getElementById('resultsContent');
+            
+            // Удаляем сообщение о загрузке при первом результате
+            if (resultsContainer.querySelector('.loading')) {
+                resultsContainer.innerHTML = '';
+            }
+            
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'result-item';
+            
+            const timestamp = new Date(result.timestamp).toLocaleString();
+            
+            resultDiv.innerHTML = `
+                <div class="result-header">
+                    <span>📝 ${result.input_message}</span>
+                    <span class="timestamp">${timestamp}</span>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">👤 Информация о пользователе</div>
+                    <div class="user-info">
+                        <strong>ID:</strong> ${result.user_info.id || 'N/A'}<br>
+                        <strong>Telegram ID:</strong> ${result.user_info.telegram_id}<br>
+                        <strong>Имя:</strong> ${result.user_info.username}<br>
+                        <strong>Таймзона:</strong> ${result.user_info.timezone || 'Не установлена'}<br>
+                        <strong>Создан:</strong> ${result.user_info.created_at ? new Date(result.user_info.created_at).toLocaleString() : 'N/A'}
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">📋 Задачи (${result.tasks.length})</div>
+                    ${result.tasks.length > 0 ? 
+                        result.tasks.map(task => `
+                            <div class="task-item">
+                                <strong>#${task.user_task_id}: ${escapeHtml(task.title)}</strong><br>
+                                <strong>Статус:</strong> ${task.status}<br>
+                                ${task.scheduled_at ? `<strong>Запланировано:</strong> ${new Date(task.scheduled_at).toLocaleString()}<br>` : ''}
+                                <strong>Создана:</strong> ${new Date(task.created_at).toLocaleString()}
+                                ${task.description ? `<br><strong>Описание:</strong> <div class="task-description">${marked.parse(task.description)}</div>` : ''}
+                            </div>
+                        `).join('') 
+                        : '<div style="color: #666; font-style: italic;">Задач нет</div>'
+                    }
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">💬 Диалог</div>
+                    <div class="dialog-info">
+                        <strong>Сводка:</strong> ${result.dialog_info.summary || 'Не создана'}<br>
+                        <strong>Последние сообщения:</strong> ${result.dialog_info.last_messages.length}<br>
+                        <strong>Обновлен:</strong> ${result.dialog_info.updated_at ? new Date(result.dialog_info.updated_at).toLocaleString() : 'N/A'}
+                    </div>
+                </div>
+            `;
+            
+            // Добавляем в начало контейнера (новые результаты сверху)
+            resultsContainer.insertBefore(resultDiv, resultsContainer.firstChild);
+            
+            // Обновляем время последнего обновления
+            document.getElementById('lastUpdate').textContent = `Последнее обновление: ${timestamp}`;
+        }
+        
+        // Отображение всех результатов
+        function displayAllResults(results) {
+            const resultsContainer = document.getElementById('resultsContent');
+            resultsContainer.innerHTML = '';
+            
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<div class="loading">Нет результатов для отображения</div>';
+                return;
+            }
+            
+            results.reverse().forEach(result => {
+                addTestResult(result);
+            });
+        }
+        
+        // Очистка результатов
+        async function clearResults() {
+            try {
+                const response = await fetch(`/testing/clear/${sessionId}`, {
+                    method: 'GET'
+                });
+                const result = await response.json();
+                
+                if (result.status === 'cleared') {
+                    document.getElementById('resultsContent').innerHTML = 
+                        '<div class="loading">Результаты очищены</div>';
+                    document.getElementById('lastUpdate').textContent = '';
+                }
+            } catch (error) {
+                console.error('Ошибка очистки результатов:', error);
+                alert('Ошибка очистки результатов');
+            }
+        }
+        
+        // Обработка Enter в поле ввода
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        // Инициализация при загрузке страницы
+        window.onload = function() {
+            // Настройка Markdown парсера
+            marked.setOptions({
+                breaks: true,        // Преобразовать переносы строк в <br>
+                gfm: true,          // GitHub Flavored Markdown
+                sanitize: false,    // Не экранировать HTML (будем использовать DOMPurify если нужно)
+                smartLists: true,   // Улучшенные списки
+                smartypants: true   // Улучшенная типографика
+            });
+            
+            initWebSocket();
+            
+            // Генерируем уникальный session ID
+            const randomId = Math.random().toString(36).substr(2, 9);
+            document.getElementById('sessionId').value = randomId;
+            sessionId = randomId;
+        };
+    </script>
+</body>
+</html>

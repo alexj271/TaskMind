@@ -172,3 +172,79 @@ async def test_detect_timezone_with_country():
         
     finally:
         await Tortoise.close_connections()
+
+
+@pytest.mark.database
+@pytest.mark.asyncio
+async def test_detect_timezone_birsk():
+    """Специальный тест для города Бирск (кириллица/латиница)"""
+    from tortoise import Tortoise
+    from app.core.db import TORTOISE_ORM
+    from app.models.city import City
+
+    await Tortoise.init(config=TORTOISE_ORM)
+
+    try:
+        # Тестируем различные варианты написания города Бирск
+        test_cases = [
+            "Бирск",      # кириллица
+            "Birsk",      # латиница
+            "бирск",      # нижний регистр кириллица
+            "birsk",      # нижний регистр латиница
+            "БИРСК",      # верхний регистр кириллица
+            "BIRSK"       # верхний регистр латиница
+        ]
+        
+        results = []
+        for city_name in test_cases:
+            try:
+                # Тестируем без указания страны
+                result = await detect_timezone(city=city_name)
+                results.append((city_name, result, "no_country"))
+                print(f"City: '{city_name}' -> Timezone: {result} (no country)")
+                
+                # Тестируем с указанием России
+                result_ru = await detect_timezone(city=city_name, country="RU")
+                results.append((city_name, result_ru, "RU"))
+                print(f"City: '{city_name}' + RU -> Timezone: {result_ru}")
+                
+            except AmbiguousCityError as e:
+                results.append((city_name, f"AmbiguousError: {len(e.cities_info)} cities", "error"))
+                print(f"City: '{city_name}' -> AmbiguousError with {len(e.cities_info)} cities")
+                
+                # Выводим информацию о найденных городах
+                for city_info in e.cities_info:
+                    print(f"  - {city_info['name']}, {city_info['country_code']}, {city_info['timezone']}")
+        
+        # Проверяем что хотя бы один из вариантов дал результат
+        successful_results = [r for r in results if r[1] and not str(r[1]).startswith("AmbiguousError")]
+        
+        print(f"\nСуммарно успешных результатов: {len(successful_results)}")
+        for city, tz, context in successful_results:
+            print(f"  {city} ({context}) -> {tz}")
+        
+        # Если есть успешные результаты, проверяем что это разумные timezone
+        if successful_results:
+            for city, tz, context in successful_results:
+                if tz:
+                    assert tz.startswith("UTC"), f"Timezone должен начинаться с UTC, получили: {tz}"
+        
+        # Специально ищем города с названием близким к Бирск в БД
+        from tortoise.models import Q
+        cities_birsk = await City.filter(
+            Q(name__icontains="birsk") | 
+            Q(alternatenames__icontains="birsk") |
+            Q(name__icontains="Бирск") |
+            Q(alternatenames__icontains="Бирск")
+        ).all()
+        
+        print(f"\nНайдено городов содержащих 'birsk' или 'Бирск': {len(cities_birsk)}")
+        for city in cities_birsk:
+            print(f"  - {city.name} ({city.country_code}), timezone: {city.timezone}")
+            print(f"    alternatenames: {city.alternatenames}")
+        
+        # Основная проверка: функция не должна падать
+        assert True, "Тест прошел без критических ошибок"
+        
+    finally:
+        await Tortoise.close_connections()

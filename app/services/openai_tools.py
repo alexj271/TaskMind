@@ -45,7 +45,7 @@ class OpenAIService:
         except Exception as e:
             raise RuntimeError(f"OpenAI API error: {str(e)}")
 
-    async def chat_with_tools(self, history_messages: List[Dict[str, Any]], user_id: int, system_prompt: str = None, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
+    async def chat_with_tools(self, messages: List[Dict[str, Any]], user_id: int, system_prompt: str = None, tools: List[Dict[str, Any]] = None) -> tuple[str, Optional[Dict[str, Any]]]:
         """
         Чат с AI используя function calling.
         Возвращает tuple: (ответ, вызванная_функция_с_аргументами или None)
@@ -64,12 +64,6 @@ class OpenAIService:
                     for tool in tools
                 ]
         
-            messages = [
-                {"role": "system", "content": system_prompt},       
-            ]
-
-            messages = messages + history_messages
-
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -203,6 +197,12 @@ class OpenAIService:
             )
             
             message = response.choices[0].message
+            
+            # Логируем сырой ответ для отладки
+            logger.info(f"OpenAI raw response - content: {repr(message.content)}")
+            if message.tool_calls:
+                logger.info(f"OpenAI tool calls count: {len(message.tool_calls)}")
+            
             result = {
                 "content": message.content,
                 "tool_calls": []
@@ -215,8 +215,16 @@ class OpenAIService:
                     
                     if function_name in tools:
                         try:
-                            # Парсим аргументы
-                            arguments = json.loads(tool_call.function.arguments)
+                            # Парсим аргументы с лучшей обработкой ошибок
+                            try:
+                                arguments = json.loads(tool_call.function.arguments)
+                                logger.info(f"OpenAI tool call {function_name}: {arguments}")
+                            except json.JSONDecodeError as json_error:
+                                logger.error(f"Невалидный JSON от OpenAI для функции {function_name}")
+                                logger.error(f"Сырые аргументы: {repr(tool_call.function.arguments)}")
+                                logger.error(f"JSON ошибка: {json_error}")
+                                # Пытаемся создать базовые аргументы для функции
+                                arguments = {}
                             
                             # Вызываем функцию
                             func_result = await tools[function_name](**arguments)
@@ -231,6 +239,7 @@ class OpenAIService:
                             
                         except Exception as e:
                             logger.error(f"Ошибка вызова функции {function_name}: {e}")
+                            logger.error(f"Аргументы функции: {tool_call.function.arguments}")
                             result["tool_calls"].append({
                                 "function": {
                                     "name": function_name,

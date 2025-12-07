@@ -17,6 +17,36 @@ class DialogRepository:
             session = await DialogSession.create(user=user)
         return session
 
+    async def get_active_session(self, user_id: int) -> Optional[DialogSession]:
+        """Получает активную сессию по telegram user_id"""
+        from app.repositories.user_repository import UserRepository
+        user_repo = UserRepository()
+        user = await user_repo.get_by_telegram(user_id)
+        if not user:
+            return None
+        return await DialogSession.filter(user=user).first()
+
+    async def get_session(self, session_id: uuid.UUID) -> Optional[DialogSession]:
+        """Получает сессию по ID"""
+        return await self.get(session_id)
+
+    async def get_or_create_active_session(self, user_id: int) -> DialogSession:
+        """Получает или создает активную сессию по telegram user_id"""
+        from app.repositories.user_repository import UserRepository
+        user_repo = UserRepository()
+        user = await user_repo.get_by_telegram(user_id)
+        if not user:
+            raise ValueError(f"User with telegram_id {user_id} not found")
+        return await self.get_or_create_for_user(user)
+
+    async def update_memory(self, session_id: str, memory_json: str) -> None:
+        """Обновляет память диалога в сессии"""
+        session_uuid = uuid.UUID(session_id)
+        session = await self.get(session_uuid)
+        if session:
+            session.memory_summary = memory_json
+            await session.save()
+
     async def add_message_to_session(self, session: DialogSession, message: str, role: str = "user") -> None:
         """Добавляет сообщение в сессию с ролью (user/assistant)"""
         data = list(session.last_messages)

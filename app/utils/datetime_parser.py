@@ -1,8 +1,28 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from tortoise import models
+from tortoise.models import Q
 from app.core.config import get_settings
 from app.models.city import City
+
+# Простая таблица транслитерации кириллица → латиница
+CYRILLIC_TO_LATIN = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+    'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+    'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+    'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+    'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh',
+    'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O',
+    'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts',
+    'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
+}
+
+def transliterate_cyrillic_to_latin(text: str) -> str:
+    """Простая транслитерация кириллицы в латиницу"""
+    result = ""
+    for char in text:
+        result += CYRILLIC_TO_LATIN.get(char, char)
+    return result
 
 # Словарь городов -> timezone (резервный, если БД недоступна)
 CITY_TIMEZONE_MAP = {
@@ -64,14 +84,46 @@ async def detect_timezone(city: str = None, country: str = None, current_time: s
     if city and not detected_tz:
         # Сначала пытаемся найти в БД
         try:
-            # Ищем по основному имени или альтернативным названиям
-            query = models.Q(name__iexact=city.strip()) | models.Q(alternatenames__icontains=city.strip())
+            city_clean = city.strip()
+            
+            # Подготовим варианты для поиска
+            search_variants = [city_clean, city_clean.lower(), city_clean.title()]
+            
+            # Если есть кириллица, добавляем транслитерированные варианты
+            if any(ord(c) >= 1040 and ord(c) <= 1103 for c in city_clean):  # Проверка на кириллицу
+                transliterated = transliterate_cyrillic_to_latin(city_clean)
+                search_variants.extend([transliterated, transliterated.lower(), transliterated.title()])
+            
+            # Создаем несколько вариантов поиска для лучшего покрытия
+            search_queries = []
+            for variant in search_variants:
+                search_queries.extend([
+                    # Точное совпадение по имени
+                    Q(name__iexact=variant),
+                    # Поиск в альтернативных названиях (точное в списке)
+                    Q(alternatenames__icontains=f",{variant},"),
+                    Q(alternatenames__icontains=f"{variant},"),
+                    Q(alternatenames__icontains=f",{variant}"),
+                    # Поиск содержащий (для частичных совпадений)
+                    Q(name__icontains=variant),
+                    # Поиск в альтернативных названиях содержащий
+                    Q(alternatenames__icontains=variant),
+                ])
+            
+            # Объединяем все поиски
+            combined_query = search_queries[0]
+            for q in search_queries[1:]:
+                combined_query |= q
             
             # Если указана страна, добавляем фильтр
             if country:
-                query &= models.Q(country_code__iexact=country.strip())
+                combined_query &= Q(country_code__iexact=country.strip())
             
-            cities = await City.filter(query).all()
+            cities = await City.filter(combined_query).all()
+            
+            # Убираем дубликаты по ID
+            unique_cities = {city.id: city for city in cities}.values()
+            cities = list(unique_cities)
             
             if len(cities) == 0:
                 # Город не найден в БД, используем словарь
@@ -82,22 +134,139 @@ async def detect_timezone(city: str = None, country: str = None, current_time: s
                 if city_obj.timezone:
                     detected_tz = city_obj.timezone
             else:
-                # Найдено несколько городов с одним названием
+                # Найдено несколько городов - применяем умную логику выбора
                 if not country:
-                    # Если страна не указана, возвращаем ошибку с информацией о найденных городах
-                    cities_info = [
-                        {
-                            'name': city_obj.name,
-                            'country_code': city_obj.country_code,
-                            'timezone': city_obj.timezone
-                        }
-                        for city_obj in cities
-                    ]
-                    raise AmbiguousCityError(city.strip(), cities_info)
-                # Если страна указана, но всё ещё несколько результатов, берём первый
-                city_obj = cities[0]
-                if city_obj.timezone:
-                    detected_tz = city_obj.timezone
+                    # Сортируем города по релевантности
+                    scored_cities = []
+                    for city_obj in cities:
+                        score = 0
+                        city_name_lower = city_obj.name.lower()
+                        search_lower = city_clean.lower()
+                        
+                        # Подготовим варианты поиска включая транслитерацию
+                        search_variants = [search_lower]
+                        if any(ord(c) >= 1040 and ord(c) <= 1103 for c in city_clean):  # Если есть кириллица
+                            transliterated = transliterate_cyrillic_to_latin(city_clean).lower()
+                            search_variants.append(transliterated)
+                        
+                        max_score = 0
+                        for search_variant in search_variants:
+                            variant_score = 0
+                            
+                            # Точное совпадение имени - максимальный приоритет
+                            if city_name_lower == search_variant:
+                                variant_score += 100
+                            # Имя начинается с искомого и длина схожая - очень высокий приоритет  
+                            elif city_name_lower.startswith(search_variant) and len(city_obj.name) <= len(search_variant) + 3:
+                                variant_score += 50
+                            # Имя начинается с искомого - высокий приоритет
+                            elif city_name_lower.startswith(search_variant):
+                                variant_score += 20
+                            # Искомое слово является полным словом в названии
+                            elif f" {search_variant} " in f" {city_name_lower} " or city_name_lower.endswith(f" {search_variant}") or city_name_lower.startswith(f"{search_variant} "):
+                                variant_score += 15
+                            # Содержится в имени - средний приоритет
+                            elif search_variant in city_name_lower:
+                                # Штраф за длинные названия (вероятно не то что ищем)
+                                if len(city_obj.name) > len(search_variant) * 2:
+                                    variant_score += 1
+                                else:
+                                    variant_score += 8
+                            # Содержится в альтернативных названиях
+                            elif city_obj.alternatenames:
+                                alt_names_lower = city_obj.alternatenames.lower()
+                                # Точное совпадение в альтернативных названиях
+                                if f",{search_variant}," in f",{alt_names_lower}," or alt_names_lower.startswith(f"{search_variant},") or alt_names_lower.endswith(f",{search_variant}"):
+                                    variant_score += 30
+                                # Содержится в альтернативных названиях
+                                elif search_variant in alt_names_lower:
+                                    variant_score += 5
+                            
+                            max_score = max(max_score, variant_score)
+                        
+                        score = max_score
+                            
+                        # Приоритет для стран где пользователь вероятнее всего находится
+                        if city_obj.country_code in ['RU', 'US', 'GB', 'DE', 'FR', 'CA', 'AU']:
+                            score += 10
+                        # Дополнительный приоритет для России (предполагаем русскоязычного пользователя)
+                        if city_obj.country_code == 'RU':
+                            score += 5
+                            
+                        scored_cities.append((score, city_obj))
+                    
+                    # Сортируем по убыванию score
+                    scored_cities.sort(key=lambda x: x[0], reverse=True)
+                    
+                    # Если есть явный лидер по score (разница > 10), используем его
+                    if len(scored_cities) > 1 and scored_cities[0][0] > scored_cities[1][0] + 10:
+                        city_obj = scored_cities[0][1]
+                        if city_obj.timezone:
+                            detected_tz = city_obj.timezone
+                    # Если топ результат имеет очень высокий score (100+), используем его даже без большой разницы
+                    elif len(scored_cities) > 0 and scored_cities[0][0] >= 100:
+                        city_obj = scored_cities[0][1] 
+                        if city_obj.timezone:
+                            detected_tz = city_obj.timezone
+                    else:
+                        # Если нет явного лидера, возвращаем ошибку с информацией о найденных городах
+                        cities_info = [
+                            {
+                                'name': city_obj.name,
+                                'country_code': city_obj.country_code,
+                                'timezone': city_obj.timezone,
+                                'score': score
+                            }
+                            for score, city_obj in scored_cities[:10]  # Показываем только топ 10
+                        ]
+                        raise AmbiguousCityError(city.strip(), cities_info)
+                else:
+                    # Если страна указана, все еще применяем scoring для выбора лучшего варианта
+                    scored_cities = []
+                    for city_obj in cities:
+                        score = 0
+                        city_name_lower = city_obj.name.lower()
+                        search_lower = city_clean.lower()
+                        
+                        # Подготовим варианты поиска включая транслитерацию
+                        search_variants = [search_lower]
+                        if any(ord(c) >= 1040 and ord(c) <= 1103 for c in city_clean):  # Если есть кириллица
+                            transliterated = transliterate_cyrillic_to_latin(city_clean).lower()
+                            search_variants.append(transliterated)
+                        
+                        max_score = 0
+                        for search_variant in search_variants:
+                            variant_score = 0
+                            
+                            # Точное совпадение имени - максимальный приоритет
+                            if city_name_lower == search_variant:
+                                variant_score += 100
+                            # Имя начинается с искомого и длина схожая - очень высокий приоритет  
+                            elif city_name_lower.startswith(search_variant) and len(city_obj.name) <= len(search_variant) + 3:
+                                variant_score += 50
+                            # Имя начинается с искомого - высокий приоритет
+                            elif city_name_lower.startswith(search_variant):
+                                variant_score += 20
+                            # Содержится в имени с приоритетом по длине
+                            elif search_variant in city_name_lower:
+                                if len(city_obj.name) > len(search_variant) * 2:
+                                    variant_score += 1
+                                else:
+                                    variant_score += 8
+                            # В альтернативных названиях
+                            elif city_obj.alternatenames and search_variant in city_obj.alternatenames.lower():
+                                variant_score += 5
+                            
+                            max_score = max(max_score, variant_score)
+                        
+                        score = max_score
+                        scored_cities.append((score, city_obj))
+                    
+                    # Сортируем и берём лучший результат
+                    scored_cities.sort(key=lambda x: x[0], reverse=True)
+                    city_obj = scored_cities[0][1]
+                    if city_obj.timezone:
+                        detected_tz = city_obj.timezone
         except AmbiguousCityError:
             # Перебрасываем исключение выше
             raise

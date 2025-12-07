@@ -3,10 +3,15 @@ Telegram Bot API Client для отправки сообщений
 """
 import httpx
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Callable
 from app.core.config import get_settings
+from app.services.redis_pubsub import get_pubsub_service
 
 logger = logging.getLogger(__name__)
+
+# Глобальные переменные для тестирования
+_testing_mode = False
+_test_message_handlers = []
 
 
 class TelegramClient:
@@ -18,9 +23,34 @@ class TelegramClient:
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
         self.timeout = 30.0
         
+    def enable_testing_mode(self):
+        """Включает режим тестирования - сообщения не отправляются в Telegram API"""
+        global _testing_mode
+        _testing_mode = True
+        logger.info("Telegram client: включен режим тестирования")
+        
+    def disable_testing_mode(self):
+        """Отключает режим тестирования"""
+        global _testing_mode
+        _testing_mode = False
+        logger.info("Telegram client: отключен режим тестирования")
+        
+    def add_test_message_handler(self, handler: Callable[[int, str], None]):
+        """Добавляет обработчик сообщений для тестирования"""
+        global _test_message_handlers
+        _test_message_handlers.append(handler)
+        
+    def remove_test_message_handler(self, handler: Callable[[int, str], None]):
+        """Удаляет обработчик сообщений для тестирования"""
+        global _test_message_handlers
+        try:
+            _test_message_handlers.remove(handler)
+        except ValueError:
+            pass
+        
     async def send_message(self, chat_id: int, text: str, parse_mode: str = "HTML") -> Dict[str, Any]:
         """
-        Отправляет сообщение в чат через Telegram Bot API
+        Отправляет сообщение в чат через Telegram Bot API или перехватывает в режиме тестирования
         
         Args:
             chat_id: ID чата для отправки
@@ -28,7 +58,7 @@ class TelegramClient:
             parse_mode: Режим парсинга (HTML, Markdown, None)
             
         Returns:
-            Dict с результатом API запроса
+            Dict с результатом API запроса или мок результат для тестирования
             
         Raises:
             httpx.HTTPError: При ошибке HTTP запроса
@@ -42,6 +72,36 @@ class TelegramClient:
             text = text[:4093] + "..."
             logger.warning(f"Сообщение обрезано до 4096 символов для чата {chat_id}")
         
+        # Проверяем флаг тестового режима в Redis для конкретного чата
+        pubsub_service = get_pubsub_service()
+        test_mode_flag = await pubsub_service.get_test_mode_flag(chat_id)
+        
+        if test_mode_flag:
+            logger.info(f"Testing mode (Redis): перехвачено сообщение для чата {chat_id}: {text[:100]}...")
+            
+            # Отправляем сообщение через Redis Pub/Sub вместо Telegram API
+            session_id = test_mode_flag.get("session_id")
+            success = await pubsub_service.publish_bot_message(chat_id, text, session_id)
+            
+            if success:
+                logger.info(f"Testing mode: сообщение отправлено через Redis Pub/Sub для сессии {session_id}")
+            else:
+                logger.error(f"Testing mode: ошибка отправки через Redis Pub/Sub")
+            
+            # Возвращаем мок успешного ответа
+            return {
+                "ok": True,
+                "result": {
+                    "message_id": 12345,
+                    "date": 1704067200,
+                    "chat": {"id": chat_id, "type": "private"},
+                    "text": text,
+                    "testing_mode": True,
+                    "redis_pubsub": True
+                }
+            }
+        
+        # Обычный режим - отправляем в Telegram API
         payload = {
             "chat_id": chat_id,
             "text": text,
@@ -128,3 +188,28 @@ async def get_bot_info() -> Dict[str, Any]:
     """Получает информацию о боте через глобальный клиент"""
     client = get_telegram_client()
     return await client.get_me()
+
+
+# Функции для управления режимом тестирования
+def enable_testing_mode():
+    """Включает режим тестирования для всех Telegram сообщений"""
+    client = get_telegram_client()
+    client.enable_testing_mode()
+
+
+def disable_testing_mode():
+    """Отключает режим тестирования"""
+    client = get_telegram_client()
+    client.disable_testing_mode()
+
+
+def add_test_message_handler(handler: Callable[[int, str], None]):
+    """Добавляет обработчик для перехваченных сообщений в режиме тестирования"""
+    client = get_telegram_client()
+    client.add_test_message_handler(handler)
+
+
+def remove_test_message_handler(handler: Callable[[int, str], None]):
+    """Удаляет обработчик для перехваченных сообщений"""
+    client = get_telegram_client()
+    client.remove_test_message_handler(handler)

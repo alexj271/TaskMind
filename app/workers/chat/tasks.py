@@ -17,6 +17,7 @@ from app.repositories.task_repository import TaskRepository
 from app.repositories.user_repository import UserRepository
 from app.workers.chat.memory_service import DialogMemoryService
 from app.workers.chat.models import ChatRequest, ChatResponse, DialogGoal, TaskAction
+from app.workers.chat.tools import CHAT_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -652,51 +653,79 @@ async def _process_chat_message_impl(user_id: int, chat_id: int, message_text: s
             relevant_tasks=relevant_tasks if relevant_tasks else "Релевантные задачи не найдены"
         )
         
-        # 4. Подготавливаем инструменты для AI
-        tools_prompt = prompt_manager.render("task_tools")
-        
-        # 5. Генерируем ответ с помощью AI
+        # 4. Генерируем ответ с помощью AI
         messages = [
-            {"role": "system", "content": system_prompt + "\n\n" + tools_prompt},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Пользователь {user_name} написал: {message_text}"}
         ]
         
-        # Определяем доступные функции для AI
-        available_functions = {
-            "create_task": task_tools.create_task,
-            "search_tasks": task_tools.search_tasks,
-            "update_task": task_tools.update_task,
-            "update_task_by_user_id": task_tools.update_task_by_user_id,
-            "delete_task_by_user_id": task_tools.delete_task_by_user_id,
-            "get_user_tasks": task_tools.get_user_tasks,
-            "find_task_for_update": task_tools.find_task_for_update,
-            "confirm_and_update_task": task_tools.confirm_and_update_task,
-            "find_task_for_reschedule": task_tools.find_task_for_reschedule,
-            "confirm_and_reschedule_task": task_tools.confirm_and_reschedule_task
-        }
-        
-        # Вызываем OpenAI с инструментами
-        response = await openai_service.generate_response_with_tools(
-            messages=messages,
-            tools=available_functions,
-            max_tokens=1000
-        )
-        
-        response_text = response.get("content", "Извините, произошла ошибка при обработке запроса.")
-        
-        # 6. Обрабатываем вызовы функций если они были
+        # Вызываем OpenAI с инструментами через chat_with_tools
+        try:
+            response_text, tool_call_result = await openai_service.chat_with_tools(
+                history_messages=messages,
+                user_id=user_id,
+                system_prompt=system_prompt,
+                tools=CHAT_TOOLS
+            )
+            
+            # Логируем результат вызова инструментов
+            if tool_call_result:
+                logger.info(f"Chat: OpenAI вызвал функцию - {tool_call_result}")
+            else:
+                logger.info(f"Chat: OpenAI ответил без вызова функций")
+            
+            if not response_text:
+                response_text = "Привет! Как дела?"
+                
+        except Exception as openai_error:
+            logger.error(f"Chat: ошибка OpenAI с tools: {openai_error}")
+            # Fallback: простой чат без инструментов
+            try:
+                simple_response = await openai_service.chat(message_text)
+                response_text = simple_response
+                tool_call_result = None
+                logger.info(f"Chat: использован fallback режим для пользователя {user_id}")
+            except Exception as fallback_error:
+                logger.error(f"Chat: ошибка fallback OpenAI: {fallback_error}")
+                response_text = "Извините, произошла ошибка при обращении к AI. Попробуйте еще раз."
+                tool_call_result = None
+
+        # 6. Обрабатываем вызов функции если он был
         tasks_created = []
         tasks_updated = []
         
-        if "tool_calls" in response:
-            for tool_call in response["tool_calls"]:
-                function_name = tool_call.get("function", {}).get("name")
-                if function_name == "create_task":
-                    tasks_created.append(tool_call.get("result", {}))
-                elif function_name == "update_task":
-                    tasks_updated.append(tool_call.get("result", {}))
-        
-        # 7. Обновляем память диалога
+        if tool_call_result:
+            function_name = tool_call_result.get("function_name")
+            function_args = tool_call_result.get("arguments", {})
+            
+            try:
+                # Вызываем соответствующую функцию из TaskTools
+                func_map = {
+                    "create_task": task_tools.create_task,
+                    "search_tasks": task_tools.search_tasks,
+                    "update_task": task_tools.update_task,
+                    "update_task_by_user_id": task_tools.update_task_by_user_id,
+                    "delete_task_by_user_id": task_tools.delete_task_by_user_id,
+                    "get_user_tasks": task_tools.get_user_tasks,
+                    "find_task_for_update": task_tools.find_task_for_update,
+                    "confirm_and_update_task": task_tools.confirm_and_update_task,
+                    "find_task_for_reschedule": task_tools.find_task_for_reschedule,
+                    "confirm_and_reschedule_task": task_tools.confirm_and_reschedule_task
+                }
+                
+                if function_name in func_map:
+                    result = await func_map[function_name](**function_args)
+                    
+                    # Отслеживаем созданные и обновленные задачи
+                    if function_name == "create_task" and result.get("success"):
+                        tasks_created.append(result)
+                    elif function_name in ["update_task", "update_task_by_user_id", "confirm_and_update_task", "confirm_and_reschedule_task"] and result.get("success"):
+                        tasks_updated.append(result)
+                    
+                logger.info(f"Chat: выполнена функция {function_name} с результатом: {result}")
+                
+            except Exception as func_error:
+                logger.error(f"Chat: ошибка выполнения функции {function_name}: {func_error}")        # 7. Обновляем память диалога
         if tasks_created:
             for task in tasks_created:
                 if task.get("success"):
@@ -731,7 +760,7 @@ async def _process_chat_message_impl(user_id: int, chat_id: int, message_text: s
         logger.info(f"Chat: ответ отправлен пользователю {user_name}, создано задач: {len(tasks_created)}, обновлено: {len(tasks_updated)}")
         
     except Exception as e:
-        logger.error(f"Chat: ошибка обработки сообщения от пользователя {user_id}: {str(e)}")
+        logger.exception(f"Chat: ошибка обработки сообщения от пользователя {user_id}: {str(e)}")
         error_message = "Извините, произошла ошибка при обработке вашего сообщения. Попробуйте еще раз."
         await telegram_send_message(chat_id, error_message)
         

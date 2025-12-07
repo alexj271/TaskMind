@@ -8,8 +8,10 @@ import logging
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 from app.core.config import get_settings
+from app.core.dramatiq_setup import redis_broker
 from app.services.openai_tools import OpenAIService
 from app.utils.prompt_manager import get_prompt
+from app.utils.datetime_parser import detect_timezone
 from app.repositories.user_repository import UserRepository
 from app.repositories.dialog_repository import DialogRepository
 from app.services.telegram_client import send_message as telegram_send_message
@@ -22,9 +24,8 @@ from app.core.db import init_db
 
 logger = logging.getLogger(__name__)
 
-# Инициализируем OpenAI сервис для определения таймзоны
-settings = get_settings()
-openai_service = OpenAIService(settings.gpt_model_fast)
+# OpenAI сервис будет инициализирован в функции
+openai_service = None
 
 # Инструмент для определения таймзоны из сообщения пользователя
 timezone_tool = [
@@ -60,6 +61,10 @@ async def process_timezone_message(incoming_msg: IncomingMessage) -> Tuple[bool,
         Tuple[bool, Optional[str]]: (успех, установленная таймзона или ошибка)
     """
     try:
+        # Инициализируем OpenAI сервис
+        settings = get_settings()
+        openai_service = OpenAIService(settings.gpt_model_fast)
+        
         logger.info(f"Gatekeeper: определяем таймзону из сообщения пользователя {incoming_msg.user_id}: '{incoming_msg.message_text[:50]}...'")
         
         timezone_prompt = get_prompt(
@@ -85,16 +90,38 @@ async def process_timezone_message(incoming_msg: IncomingMessage) -> Tuple[bool,
             timezone_args = function_call.get("arguments", {})
             logger.info(f"Gatekeeper: AI определил таймзону с аргументами: {timezone_args}")
             
-            timezone = timezone_args.get("timezone")
-            error = timezone_args.get("error")
+            timezone = timezone_args.get("timezone", "").strip()
+            city = timezone_args.get("city", "").strip() 
+            error = timezone_args.get("error", "").strip()
             
-            if timezone:    
+            # Пытаемся определить таймзону используя все доступные параметры
+            final_timezone = None
+            
+            try:
+                # Используем универсальный метод detect_timezone со всеми параметрами
+                final_timezone = await detect_timezone(
+                    city=city if city else None,
+                    timezone_str=timezone if timezone else None,
+                    current_time=None  # Можно добавить извлечение времени из сообщения
+                )
+                
+                if final_timezone:
+                    params_used = []
+                    if city: params_used.append(f"город: {city}")
+                    if timezone: params_used.append(f"таймзона: {timezone}")
+                    logger.info(f"Gatekeeper: определена таймзона '{final_timezone}' по параметрам: {', '.join(params_used)}")
+                    
+            except Exception as detect_error:
+                logger.warning(f"Gatekeeper: ошибка detect_timezone: {detect_error}")
+                final_timezone = None
+            
+            if final_timezone:    
                 # Обновляем таймзону пользователя в базе
                 user_repo = UserRepository()
-                user = await user_repo.update_by_telegram(incoming_msg.user_id, timezone=timezone)
+                user = await user_repo.update_by_telegram(incoming_msg.user_id, timezone=final_timezone)
                 if user:
-                    logger.info(f"Gatekeeper: таймзона пользователя {incoming_msg.user_id} установлена на {timezone}")
-                    return True, timezone
+                    logger.info(f"Gatekeeper: таймзона пользователя {incoming_msg.user_id} установлена на {final_timezone}")
+                    return True, final_timezone
                 else:
                     logger.error(f"Gatekeeper: не удалось обновить пользователя {incoming_msg.user_id}")
                     return False, "Не удалось обновить пользователя в базе данных"
@@ -102,8 +129,9 @@ async def process_timezone_message(incoming_msg: IncomingMessage) -> Tuple[bool,
                 logger.info(f"Gatekeeper: AI не смог определить таймзону: {error}")
                 return False, error
             else:
+                city_info = f" (город: {city})" if city else ""
                 logger.error(f"Gatekeeper: неверные аргументы от AI: {timezone_args}")
-                return False, "Неверные данные от AI"
+                return False, f"Не удалось определить таймзону{city_info}. Попробуйте указать крупный город или таймзону в формате 'Europe/Moscow'"
         else:           
             logger.info(f"Gatekeeper: AI не вызвал функцию определения таймзоны")
             return False, "Не удалось определить таймзону из вашего сообщения"

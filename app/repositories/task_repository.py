@@ -2,6 +2,7 @@ from app.models.task import Task
 from typing import Optional, List
 from datetime import datetime
 import uuid
+from tortoise import models
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -91,8 +92,25 @@ class TaskRepository:
     
     async def search_by_similarity(self, user_id: uuid.UUID, query: str, limit: int = 10) -> List[Task]:
         """Поиск задач по семантическому сходству с запросом"""
-        # Генерируем эмбеддинг для поискового запроса
-        query_embedding = self._generate_embedding(query)
+        # Проверяем доступность sentence-transformers
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            # Fallback: простой текстовый поиск по названию и описанию
+            return await Task.filter(
+                user_id=user_id
+            ).filter(
+                models.Q(title__icontains=query) | models.Q(description__icontains=query)
+            ).limit(limit).all()
+        
+        try:
+            # Генерируем эмбеддинг для поискового запроса
+            query_embedding = self._generate_embedding(query)
+        except ImportError:
+            # Fallback если произошла ошибка с эмбеддингами
+            return await Task.filter(
+                user_id=user_id
+            ).filter(
+                models.Q(title__icontains=query) | models.Q(description__icontains=query)  
+            ).limit(limit).all()
         
         # Преобразуем эмбеддинг в JSON формат для PostgreSQL
         import json
