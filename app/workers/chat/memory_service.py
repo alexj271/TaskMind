@@ -9,6 +9,7 @@ from app.workers.chat.models import MemorySummary, DialogGoal, TaskAction
 from app.models.dialog_session import DialogSession
 from app.repositories.dialog_repository import DialogRepository
 from app.services.openai_tools import OpenAIService
+from app.utils.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,11 @@ class DialogMemoryService:
     def __init__(self):
         self.dialog_repo = DialogRepository()
         self.openai_service = OpenAIService(gpt_model="gpt-4o-mini")
+        # Указываем путь к промптам chat worker
+        import os
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        chat_prompts_dir = os.path.join(current_dir, "prompts")
+        self.prompt_manager = PromptManager(template_dir=chat_prompts_dir)
     
     async def get_or_create_memory(self, user_id: int, session_id: Optional[str] = None) -> MemorySummary:
         """
@@ -190,33 +196,13 @@ class DialogMemoryService:
         try:
             user_prefix = f"{user_name}: " if user_name else "Пользователь: "
             
-            prompt = f"""Ты — модуль для резюмирования диалога в системе управления задачами TaskMind.
-
-Текущее резюме диалога:
-{current_summary}
-
-Новое сообщение:
-{user_prefix}{new_message}
-
-Обнови резюме, сохранив только факты, цели, параметры и шаги, важные для продолжения работы с задачами. Сосредоточься на:
-- Целях пользователя по управлению задачами
-- Конкретных данных о задачах (названия, сроки, приоритеты)
-- Выполненных действиях с задачами
-- Текущем состоянии диалога
-
-Верни ТОЛЬКО обновленное резюме в формате:
-
-ОБЩАЯ ЦЕЛЬ ПОЛЬЗОВАТЕЛЯ:
-...
-
-АКТУАЛЬНЫЕ ДАННЫЕ:
-...
-
-СДЕЛАННЫЕ ШАГИ:
-...
-
-АКТУАЛЬНОЕ СОСТОЯНИЕ:
-..."""
+            # Загружаем промпт из файла
+            prompt = self.prompt_manager.render(
+                "dialog_summarizer",
+                current_summary=current_summary,
+                user_prefix=user_prefix,
+                new_message=new_message
+            )
             
             response = await self.openai_service.client.chat.completions.create(
                 model=self.openai_service.model,

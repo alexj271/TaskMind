@@ -16,6 +16,7 @@ class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: uuid.UUID
+    user_task_id: int
     title: str
     description: Optional[str]
     scheduled_at: Optional[datetime]

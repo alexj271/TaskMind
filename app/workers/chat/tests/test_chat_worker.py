@@ -34,6 +34,7 @@ class TestTaskTools:
         """Мок задачи"""
         task = MagicMock(spec=Task)
         task.id = "550e8400-e29b-41d4-a716-446655440001"
+        task.user_task_id = 1
         task.title = "Тестовая задача"
         task.description = "Описание тестовой задачи"
         task.created_at = datetime.now(timezone.utc)
@@ -62,6 +63,7 @@ class TestTaskTools:
             assert result["success"] is True
             assert result["title"] == "Тестовая задача"
             assert "task_id" in result
+            assert result["user_task_id"] == 1
             
             # Проверяем вызовы
             mock_user_repo.get_by_telegram.assert_called_once_with(123456789)

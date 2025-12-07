@@ -29,7 +29,18 @@ class TaskRepository:
         embedding = model.encode(text, normalize_embeddings=True)
         return embedding.tolist()
     
+    async def _get_next_user_task_id(self, user_id: uuid.UUID) -> int:
+        """Получает следующий user_task_id для пользователя"""
+        # Находим максимальный user_task_id для данного пользователя
+        max_task = await Task.filter(user_id=user_id).order_by("-user_task_id").first()
+        if max_task:
+            return max_task.user_task_id + 1
+        return 1
+    
     async def create(self, user_id: uuid.UUID, *, title: str, description: str | None, scheduled_at: datetime | None, reminder_at: datetime | None) -> Task:
+        # Получаем следующий user_task_id
+        user_task_id = await self._get_next_user_task_id(user_id)
+        
         # Генерируем эмбеддинг на основе заголовка и описания
         text_for_embedding = title
         if description:
@@ -42,6 +53,7 @@ class TaskRepository:
         
         return await Task.create(
             user_id=user_id, 
+            user_task_id=user_task_id,
             title=title, 
             description=description, 
             embedding_bge_small=embedding_json,  # Сохраняем как JSON строку для PostgreSQL vector
@@ -51,12 +63,24 @@ class TaskRepository:
 
     async def get(self, task_id: uuid.UUID) -> Optional[Task]:
         return await Task.filter(id=task_id).first()
+    
+    async def get_by_user_task_id(self, user_id: uuid.UUID, user_task_id: int) -> Optional[Task]:
+        """Получает задачу по user_task_id в контексте пользователя"""
+        return await Task.filter(user_id=user_id, user_task_id=user_task_id).first()
 
     async def list_for_user(self, user_id: uuid.UUID) -> List[Task]:
         return await Task.filter(user_id=user_id).all()
 
     async def delete(self, task_id: uuid.UUID) -> int:
         return await Task.filter(id=task_id).delete()
+    
+    async def delete_by_user_task_id(self, user_id: uuid.UUID, user_task_id: int) -> int:
+        """Удаляет задачу по user_task_id"""
+        return await Task.filter(user_id=user_id, user_task_id=user_task_id).delete()
+    
+    async def update_by_user_task_id(self, user_id: uuid.UUID, user_task_id: int, **updates) -> int:
+        """Обновляет задачу по user_task_id"""
+        return await Task.filter(user_id=user_id, user_task_id=user_task_id).update(**updates)
 
     async def delete_all_for_user(self, user_id: uuid.UUID) -> int:
         """Удаляет все задачи пользователя (для тестов и демо)"""
@@ -79,7 +103,7 @@ class TaskRepository:
         conn = connections.get("default")
         
         sql_query = """
-        SELECT id, title, description, scheduled_at, reminder_at, created_at, user_id,
+        SELECT id, user_task_id, title, description, scheduled_at, reminder_at, created_at, user_id,
                (embedding_bge_small <=> $1::vector) as distance
         FROM tasks 
         WHERE user_id = $2 AND embedding_bge_small IS NOT NULL
@@ -97,6 +121,7 @@ class TaskRepository:
         for row in results:
             task = Task(
                 id=row['id'],
+                user_task_id=row['user_task_id'],
                 title=row['title'],
                 description=row['description'],
                 scheduled_at=row['scheduled_at'],

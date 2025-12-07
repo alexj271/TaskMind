@@ -11,7 +11,7 @@ from typing import Dict, Any
 
 from app.services.openai_tools import OpenAIService
 from app.core.config import settings
-from app.workers.gatekeeper.tasks import tools_create_timezone as timezone_tools
+from app.workers.gatekeeper.tasks import timezone_tool as timezone_tools
 from app.utils.prompt_manager import PromptManager
 
 # Настройка логирования

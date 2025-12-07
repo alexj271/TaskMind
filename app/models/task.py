@@ -4,6 +4,7 @@ import uuid
 class Task(models.Model):
     id = fields.UUIDField(pk=True, default=uuid.uuid4)
     user = fields.ForeignKeyField("models.User", related_name="tasks", on_delete=fields.CASCADE)
+    user_task_id = fields.IntField()  # Стабильный ID задачи в контексте пользователя
     title = fields.CharField(max_length=255)
     description = fields.TextField(null=True)
     embedding_bge_small = fields.TextField(null=True)  # pgvector(384) для BGE-small эмбеддингов - реальный тип vector(384) в БД
@@ -16,4 +17,6 @@ class Task(models.Model):
         indexes = [
             models.Index(fields=["user_id"], name="idx_task_user"),
             models.Index(fields=["created_at"], name="idx_task_created"),
+            models.Index(fields=["user_id", "user_task_id"], name="idx_user_task_id"),
         ]
+        unique_together = (("user_id", "user_task_id"),)
