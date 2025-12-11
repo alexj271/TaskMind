@@ -19,7 +19,7 @@ class DialogMemoryService:
     
     def __init__(self):
         self.dialog_repo = DialogRepository()
-        self.openai_service = OpenAIService(gpt_model="gpt-4o-mini")
+        self.openai_service = OpenAIService(gpt_model="gpt-4.1-nano")
         # Указываем путь к промптам chat worker
         import os
         current_dir = os.path.dirname(os.path.abspath(__file__))

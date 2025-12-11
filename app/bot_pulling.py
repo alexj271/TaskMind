@@ -8,9 +8,14 @@ sys.path.insert(0, str(project_root))
 import asyncio
 import aiohttp
 import logging
+import json
 from app.core.config import get_settings
-from app.workers.gatekeeper.tasks import process_webhook_message
 from app.schemas.telegram import TelegramUpdate
+import redis.asyncio as aioredis
+
+
+settings = get_settings()
+r = aioredis.from_url(settings.redis_url)
 
 # Настраиваем логирование для вывода в консоль
 logging.basicConfig(
@@ -66,13 +71,21 @@ async def run_long_polling():
                             if update.message:
                                 logger.info(f"Сообщение от пользователя {update.message.from_.id if update.message.from_ else 'неизвестен'}: {update.message.text or 'без текста'}")
 
-                                # Отправляем сообщение в Gatekeeper для классификации и обработки
-                                process_webhook_message.send(
-                                    update_id=update.update_id,
-                                    message_data=update.message.model_dump()
-                                )
+                                user_id = update.message.from_.id if update.message.from_ else None
+                                if user_id is None:
+                                    raise Exception("Отсутствует ID пользователя в сообщении")
 
-                                logger.info(f"Сообщение отправлено в очередь Dramatiq для обработки")
+                                stream = f"agent:{user_id}:stream"
+                                message_data = json.dumps(update.message.model_dump(), ensure_ascii=False)
+                                await r.xadd(stream, {"message": message_data})
+
+                                # Отправляем сообщение в Gatekeeper для классификации и обработки
+                                # process_webhook_message.send(
+                                #     update_id=update.update_id,
+                                #     message_data=update.message.model_dump()
+                                # )
+
+                                # logger.info(f"Сообщение отправлено в очередь Dramatiq для обработки")
 
                             # Обновляем offset
                             offset = update.update_id + 1

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     gpt_model_fast: str = Field(default="gpt-4.1-nano")
     timezone: str = "UTC"
     
+    # MCP Server настройки
+    mcp_server_url: str = Field(default="http://0.0.0.0:8001/mcp")
+    
     @property
     def redis_host(self) -> str:
         """Извлекает host из REDIS_URL"""

@@ -22,7 +22,7 @@ class ErrorFilter(logging.Filter):
         return record.levelno >= logging.WARNING
 
 
-def setup_logging(log_level: str = "INFO") -> None:
+def setup_logging(log_level: str = "DEBUG") -> None:
     """
     Настройка логирования с разделением потоков только для app модулей.
     Не затрагиваем root logger, чтобы не конфликтовать с Dramatiq.

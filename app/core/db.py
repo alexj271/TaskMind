@@ -13,6 +13,7 @@ TORTOISE_ORM = {
                 "app.models.task",
                 "app.models.dialog_session",
                 "app.models.city",
+                "app.models.event",
                 "app.models.message_history",
                 "aerich.models",
             ],
