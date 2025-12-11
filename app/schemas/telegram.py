@@ -37,8 +37,23 @@ class TelegramMessage(BaseModel):
     # Можно добавить другие поля по необходимости
 
 
+class TelegramCallbackQuery(BaseModel):
+    """Модель callback query от inline клавиатуры"""
+    id: str
+    from_: TelegramUser = Field(alias="from")
+    message: Optional[TelegramMessage] = None
+    inline_message_id: Optional[str] = None
+    chat_instance: str
+    data: Optional[str] = None
+    game_short_name: Optional[str] = None
+
+
 class TelegramUpdate(BaseModel):
     """Модель обновления от Telegram"""
     update_id: int
     message: Optional[TelegramMessage] = None
-    # Можно добавить другие типы обновлений: edited_message, callback_query и т.д.
+    edited_message: Optional[TelegramMessage] = None
+    channel_post: Optional[TelegramMessage] = None
+    edited_channel_post: Optional[TelegramMessage] = None
+    callback_query: Optional[TelegramCallbackQuery] = None
+    # Можно добавить другие типы обновлений по необходимости

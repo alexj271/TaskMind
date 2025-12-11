@@ -51,12 +51,15 @@ async def run_long_polling():
                 # Делаем запрос к Telegram API
                 params = {"offset": offset, "timeout": 25}
                 async with session.get(f"{base_url}/getUpdates", params=params) as resp:
+                    print(f"HTTP статус ответа Telegram API: {resp.status}")
                     if resp.status != 200:
                         logger.error(f"Ошибка Telegram API: {resp.status}")
                         await asyncio.sleep(5)
                         continue
 
                     data = await resp.json()
+
+                    print(f"Ответ Telegram API: {data}")
 
                     if not data.get("ok") or not data.get("result"):
                         await asyncio.sleep(0.1)
@@ -79,13 +82,20 @@ async def run_long_polling():
                                 message_data = json.dumps(update.message.model_dump(), ensure_ascii=False)
                                 await r.xadd(stream, {"message": message_data})
 
-                                # Отправляем сообщение в Gatekeeper для классификации и обработки
-                                # process_webhook_message.send(
-                                #     update_id=update.update_id,
-                                #     message_data=update.message.model_dump()
-                                # )
+                            elif update.callback_query:
+                                logger.info(f"Callback query от пользователя {update.callback_query.from_.id}: {update.callback_query.data}")
 
-                                # logger.info(f"Сообщение отправлено в очередь Dramatiq для обработки")
+                                user_id = update.callback_query.from_.id
+                                
+                                # Отправляем callback_query в тот же stream что и сообщения
+                                stream = f"agent:{user_id}:stream"
+                                
+                                # Создаём структуру похожую на обычное сообщение, но с callback_query
+                                callback_data = {
+                                    "callback_query": update.callback_query.model_dump()
+                                }
+                                message_data = json.dumps(callback_data, ensure_ascii=False)
+                                await r.xadd(stream, {"message": message_data})
 
                             # Обновляем offset
                             offset = update.update_id + 1

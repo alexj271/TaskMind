@@ -48,7 +48,7 @@ class TelegramClient:
         except ValueError:
             pass
         
-    async def send_message(self, chat_id: int, text: str, parse_mode: str = "HTML") -> Dict[str, Any]:
+    async def send_message(self, chat_id: int, text: str, parse_mode: str = "HTML", reply_markup: dict = None) -> Dict[str, Any]:
         """
         Отправляет сообщение в чат через Telegram Bot API или перехватывает в режиме тестирования
         
@@ -109,6 +109,8 @@ class TelegramClient:
         
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
             
         url = f"{self.base_url}/sendMessage"
         
@@ -162,6 +164,52 @@ class TelegramClient:
                 raise
             except Exception as e:
                 logger.error(f"Ошибка Telegram API при получении информации о боте: {str(e)}")
+                raise
+
+    async def answer_callback_query(self, callback_query_id: str, text: str = None, show_alert: bool = False) -> Dict[str, Any]:
+        """
+        Отвечает на callback query от inline клавиатуры
+        
+        Args:
+            callback_query_id: ID callback query для ответа
+            text: Опциональный текст уведомления (до 200 символов)
+            show_alert: Показать как alert вместо уведомления
+            
+        Returns:
+            Dict с результатом API запроса
+        """
+        payload = {
+            "callback_query_id": callback_query_id
+        }
+        
+        if text:
+            payload["text"] = text[:200]  # Ограничение Telegram API
+        if show_alert:
+            payload["show_alert"] = show_alert
+            
+        url = f"{self.base_url}/answerCallbackQuery"
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                logger.debug(f"Отвечаем на callback query: {callback_query_id}")
+                
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+                if not result.get("ok"):
+                    error_description = result.get("description", "Unknown error")
+                    raise Exception(f"Telegram API error: {error_description}")
+                
+                logger.debug(f"Callback query успешно обработан: {callback_query_id}")
+                return result
+                
+            except httpx.HTTPError as e:
+                logger.error(f"HTTP ошибка при ответе на callback query {callback_query_id}: {str(e)}")
+                raise
+            except Exception as e:
+                logger.error(f"Ошибка Telegram API при ответе на callback query {callback_query_id}: {str(e)}")
                 raise
 
 
