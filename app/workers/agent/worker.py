@@ -8,6 +8,8 @@ from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 from app.core.config import get_settings
 from app.services.telegram_client import TelegramClient
+from app.utils.prompt_manager import TemplateManager
+from .utils import MCPConfirmationFormatter
 
 
 MAX_ACTIVE_AGENTS = 10
@@ -32,6 +34,12 @@ class AgentSession:
         self.running = True
         self.telegram_client = TelegramClient()
         self.mcp_tools = None
+        
+        # Шаблоны для сообщений MCP функций
+        from pathlib import Path
+        template_dir = Path(__file__).parent / "templates"
+        template_manager = TemplateManager(template_dir=str(template_dir))
+        self.confirmation_formatter = MCPConfirmationFormatter(template_manager)
         
         # Уникальный ID для отслеживания агента в логах
         import uuid
@@ -342,24 +350,6 @@ class AgentSession:
             if function_name in ["create_task", "search_tasks", "get_user_tasks", "update_task_status"]:
                 arguments["user_id"] = int(self.user_id)
 
-            # Отправляем сообщение с inline клавиатурой для подтверждения
-            inline_keyboard = {
-                "inline_keyboard": [
-                    [
-                        {"text": "✅ Да", "callback_data": "confirm_yes"},
-                        {"text": "❌ Нет", "callback_data": "confirm_no"}
-                    ]
-                ]
-            }
-            
-            # Получаем описание функции из MCP tools
-            function_description = "выполнение операции"
-            if self.mcp_tools:
-                for tool in self.mcp_tools:
-                    if tool.get("name") == function_name:
-                        function_description = tool.get("description", function_description)
-                        break
-            
             # Генерируем уникальный ключ для сохранения в Redis
             import uuid
             callback_key = f"mcp_confirm:{self.user_id}:{uuid.uuid4().hex[:8]}"
@@ -378,7 +368,7 @@ class AgentSession:
                 json.dumps(function_data)
             )
             
-            # Обновляем inline клавиатуру с ключом Redis
+            # Создаем inline клавиатуру с ключом Redis
             inline_keyboard = {
                 "inline_keyboard": [
                     [
@@ -388,9 +378,14 @@ class AgentSession:
                 ]
             }
 
+            # Генерируем человекочитаемое сообщение используя шаблоны
+            confirmation_message = self.confirmation_formatter.format_mcp_confirmation_message(
+                function_name, arguments, self.user_id, self.mcp_tools
+            )
+
             result = await self.telegram_client.send_message(
                 chat_id=self.user_id,
-                text=f"🔧 **Запрос на выполнение функции**\n\n📋 **Функция:** {function_name}\n📝 **Описание:** {function_description}\n\n❓ Вы подтверждаете выполнение?",
+                text=confirmation_message,
                 reply_markup=inline_keyboard,
                 parse_mode="Markdown"
             )

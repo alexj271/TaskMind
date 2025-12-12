@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 
+
 class PromptTemplate:
     """Класс для работы с шаблонами промптов"""
     
@@ -22,7 +23,7 @@ class PromptTemplate:
         return template.format(**kwargs)
 
 
-class TenolateManager:
+class TemplateManager:
     """Менеджер для управления промптами"""
     
     def __init__(self, template_dir: str = None, subdir: str = None):
@@ -62,7 +63,7 @@ class TenolateManager:
         return sorted(templates)
 
 
-class PromptManager(TenolateManager):
+class PromptManager(TemplateManager):
     """Менеджер для работы с промптами в приложении TaskMind"""
     def __init__(self, template_dir: str = None):
         super().__init__(template_dir=template_dir, subdir="prompts")
@@ -71,22 +72,21 @@ class PromptManager(TenolateManager):
 prompt_manager = PromptManager()
 
 
-def get_prompt(prompt_name: str, template_dir: str = None, **kwargs) -> TenolateManager:
+def get_prompt(prompt_name: str, template_dir: str = None, **kwargs) -> TemplateManager:
     """Функция для получения экземпляра PromptManager с указанной поддиректорией"""
     current_dir = Path(__file__).parent.parent  # app/utils -> app
     if template_dir is None:
         template_dir = current_dir / "prompts"
-    manager = TenolateManager(template_dir=str(template_dir))
+    manager = TemplateManager(template_dir=str(template_dir))
 
     return manager.render(prompt_name, **kwargs)
 
 
-
-def get_template(template_name: str, template_dir: str = None, **kwargs) -> TenolateManager:
+def get_template(template_name: str, template_dir: str = None, **kwargs) -> TemplateManager:
     """Функция для получения экземпляра PromptManager с указанной поддиректорией"""
     current_dir = Path(__file__).parent.parent  # app/utils -> app
     if template_dir is None:
         template_dir = current_dir / "templates"
-    manager = TenolateManager(template_dir=str(template_dir))
+    manager = TemplateManager(template_dir=str(template_dir))
 
     return manager.render(template_name, **kwargs)
