@@ -1,6 +1,8 @@
 import asyncio
+from datetime import datetime
 import json
 import logging
+from pathlib import Path
 import time
 import redis.asyncio as aioredis
 from openai import AsyncOpenAI
@@ -8,8 +10,13 @@ from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
 from app.core.config import get_settings
 from app.services.telegram_client import TelegramClient
-from app.utils.prompt_manager import TemplateManager
+from app.repositories.dialog_repository import DialogRepository
+from app.repositories.user_repository import UserRepository
+from app.utils.prompt_manager import TemplateManager, PromptManager, get_prompt
 from .utils import MCPConfirmationFormatter
+from .state_manager import StateManager
+from .dialog_agent import DialogAgent
+from .decision_engine import DecisionEngine
 
 
 MAX_ACTIVE_AGENTS = 10
@@ -41,12 +48,29 @@ class AgentSession:
         template_manager = TemplateManager(template_dir=str(template_dir))
         self.confirmation_formatter = MCPConfirmationFormatter(template_manager)
         
+        # StateManager для управления состоянием пользователя
+        self.state_manager = StateManager(user_id=user_id, redis_client=redis)
+        
+        # DialogAgent для понимания языка и формирования ответов
+        self.dialog_agent = DialogAgent(user_id=user_id)
+        
+        # DecisionEngine для выбора действий
+        self.decision_engine = DecisionEngine(user_id=user_id)
+        
         # Уникальный ID для отслеживания агента в логах
         import uuid
         self.agent_id = str(uuid.uuid4())[:8]
 
     async def run(self):
         logger.info(f"[AGENT {self.user_id}:{self.agent_id}] started")
+        
+        # Инициализируем БД для работы с репозиториями
+        from app.core.db import init_db
+        await init_db()
+        
+        # Загружаем state из Redis
+        await self.state_manager.load_from_redis()
+        logger.info(f"[AGENT {self.user_id}:{self.agent_id}] state loaded")
         
         try:
             async with streamablehttp_client(settings.mcp_server_url) as (read, write, get_session_id):
@@ -100,14 +124,15 @@ class AgentSession:
                                 # Обрабатываем обычное текстовое сообщение
                                 message_text = self._extract_message_text(data)
                                 
-                                # Используем OpenAI Responses API с MCP инструментами
-                                response = await self._process_with_ai(session, message_text)
+                                # СХЕМА: User → Dialog Agent → Decision Engine → Tool → Response
+                                response = await self._handle_user_message(session, message_text)
                                         
-                                # Отправляем ответ в Telegram
-                                await self._send_telegram_message(
-                                    user_id=self.user_id,
-                                    text=response
-                                )
+                                if response:
+                                    # Отправляем ответ в Telegram
+                                    await self._send_telegram_message(
+                                        user_id=self.user_id,
+                                        text=response
+                                    )
 
                                 logger.info(f"[AGENT {self.user_id}:{self.agent_id}] processed {msg_id} {response}")
 
@@ -121,7 +146,9 @@ class AgentSession:
         except Exception as e:
             logger.error(f"[AGENT {self.user_id}:{self.agent_id}] error during execution: {e}")
         finally:
-            logger.info(f"[AGENT {self.user_id}:{self.agent_id}] stopped")
+            # Сохраняем state в Redis перед остановкой
+            await self.state_manager.sync_to_redis()
+            logger.info(f"[AGENT {self.user_id}:{self.agent_id}] stopped, state saved")
 
     def _extract_message_text(self, data: dict) -> str:
         """Извлекает текст сообщения из данных Redis stream (только для обычных сообщений)"""
@@ -294,55 +321,180 @@ class AgentSession:
             logger.error(f"[AGENT {self.user_id}] Traceback: {traceback.format_exc()}")
             return None
 
-    async def _process_with_ai(self, session: object, message_text: str) -> str:
-        """Обрабатывает сообщение с помощью OpenAI Responses API"""
+    async def _handle_user_message(self, mcp_session: object, message_text: str) -> str:
+        """
+        ПОЛНАЯ СХЕМА обработки сообщения пользователя:
+        1. User → Dialog Agent (понимание намерения)
+        2. Clarification check
+        3. Intent Payload → Decision Engine (выбор действия)
+        4. Tool Call → Tool Executor
+        5. Tool Result → State Update
+        6. Dialog Agent (человеческий ответ)
+        """
         try:
-            SYSTEM = """
-                Ты - интеллектуальный помощник для управления задачами через Telegram бот.
-                Используй доступные функции для выполнения запросов пользователя.
-            """
-            response = await client.responses.create(
-                model="gpt-4.1-mini",
-                input=message_text,
-                instructions=SYSTEM,
-                tools=self.mcp_tools,
-                max_output_tokens=800,
-                temperature=0.3
+            # === ШАГ 1: DIALOG AGENT - понимание намерения ===
+            intent_result = await self.dialog_agent.understand_intent(message_text)
+            
+            logger.info(f"[AGENT {self.user_id}] Intent: {intent_result.get('intent')}")
+            
+            # === ШАГ 2: CLARIFICATION CHECK ===
+            if intent_result.get("needs_clarification"):
+                # Возвращаем уточняющий вопрос пользователю
+                clarification_message = intent_result.get("clarification_question", "Уточните, пожалуйста, ваш запрос.")
+                
+                # Сохраняем в state что ждём уточнение
+                self.state_manager.update_current_context(
+                    intent="clarification_needed",
+                    mentioned_entities=intent_result.get("entities", []),
+                    clarification_question=clarification_message
+                )
+                await self.state_manager.sync_to_redis()
+                
+                return clarification_message
+            
+            # === ШАГ 3: DECISION ENGINE - выбор действия ===
+            # Получаем релевантный контекст для Decision Engine
+            relevant_context = await self.state_manager.get_relevant_context(
+                user_message=message_text,
+                intent=intent_result.get("intent")
             )
             
-            # Обрабатываем ответ
-            result_text = ""            
-            for item in response.output:
-                logger.debug(f'Content: {item} Type: {item.type}')
-                if item.type == "message":
-                    result_text += " ".join([i.text for i in item.content])
-                elif item.type == "function_call":
-                    # Выполняем вызов MCP функции
-                    arguments = json.loads(item.arguments) if isinstance(item.arguments, str) else item.arguments
-
-                    logger.debug(f'Function call: {item.name} Args: {arguments}')
-                    func_result = await self._call_mcp_function(
-                        session,
-                        item.name, 
-                        arguments
-                    )
-                    if func_result.get("pending"):
-                        result_text += f"\n⏳ Запрос на подтверждение: {item.name}"
-                        if "message" in func_result:
-                            result_text += f" - {func_result['message']}"
-                    elif func_result.get("success"):
-                        result_text += f"\n✅ Выполнено: {item.name}"
-                        if "title" in func_result:
-                            result_text += f" - {func_result['title']}"
-                    else:
-                        result_text += f"\n❌ Ошибка: {item.name} - {func_result.get('error', 'неизвестная ошибка')}"
+            # Получаем список доступных инструментов
+            available_tools = [tool["name"] for tool in (self.mcp_tools or [])]
             
-            return result_text if result_text.strip() else "Готово!"
+            decision_result = await self.decision_engine.choose_action_with_validation(
+                intent_payload=intent_result,
+                state_context=relevant_context,
+                available_tools=available_tools
+            )
+            
+            logger.info(f"[AGENT {self.user_id}] Decision: {decision_result.get('action_type')}")
+            
+            # === ШАГ 4-5: TOOL EXECUTION & STATE UPDATE ===
+            if decision_result.get("action_type") == "tool_call":
+                tool_name = decision_result.get("tool_name")
+                tool_arguments = decision_result.get("tool_arguments", {})
+                
+                # Добавляем в recent_actions
+                self.state_manager.add_action(
+                    action_type="tool_call_initiated",
+                    description=f"Вызов {tool_name}",
+                    tool_name=tool_name,
+                    arguments=tool_arguments
+                )
+                
+                # Выполняем tool
+                tool_result = await self._execute_tool(mcp_session, tool_name, tool_arguments)
+                
+                # Обновляем state на основе результата
+                await self._update_state_from_tool_result(tool_name, tool_arguments, tool_result)
+                
+                # === ШАГ 5.1: STATE OPTIMIZATION ===
+                # Оптимизируем state после обновления, но перед формированием ответа
+                optimization_stats = await self.state_manager.optimize_state()
+                logger.info(f"[AGENT {self.user_id}] State optimized after tool execution: {optimization_stats}")
+                
+                # Сохраняем state
+                await self.state_manager.sync_to_redis()
+                
+                # === ШАГ 6: DIALOG AGENT - формирование ответа ===
+                if tool_result.get("pending"):
+                    # Ожидаем подтверждение - не отправляем дополнительное сообщение
+                    return ""
+                else:
+                    # Формируем человеческий ответ на основе результата
+                    response = await self.dialog_agent.format_response(
+                        intent=intent_result.get("intent"),
+                        tool_name=tool_name,
+                        tool_result=tool_result
+                    )
+                    
+                    # Сохраняем диалог
+                    self.state_manager.add_dialog_message("user", message_text)
+                    self.state_manager.add_dialog_message("assistant", response)
+                    await self.state_manager.sync_to_redis()
+                    
+                    return response
+            
+            elif decision_result.get("action_type") == "noop":
+                # Просто отвечаем без выполнения инструментов
+                response = decision_result.get("message", "Понял вас, но действий не требуется.")
+                
+                # Сохраняем диалог
+                self.state_manager.add_dialog_message("user", message_text)
+                self.state_manager.add_dialog_message("assistant", response)
+                await self.state_manager.sync_to_redis()
+                
+                return response
+            
+            else:
+                return "Не удалось определить действие."
             
         except Exception as e:
-            logger.exception(f"[AGENT {self.user_id}] ошибка обработки AI: {e}")
-            return f"Произошла ошибка при обработке запроса: {str(e)}"
-
+            logger.exception(f"[AGENT {self.user_id}] ошибка обработки сообщения: {e}")
+            return f"Произошла ошибка: {str(e)}"
+    
+    async def _execute_tool(self, mcp_session: object, tool_name: str, tool_arguments: dict) -> dict:
+        """
+        Tool Executor: Выполнение выбранного инструмента
+        
+        Returns:
+            {
+                "success": bool,
+                "pending": bool (if confirmation needed),
+                "result": any,
+                "error": str (if failed)
+            }
+        """
+        try:
+            # Вызываем MCP функцию
+            tool_result = await self._call_mcp_function(mcp_session, tool_name, tool_arguments)
+            return tool_result
+            
+        except Exception as e:
+            logger.error(f"[AGENT {self.user_id}] ошибка Tool Executor: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _update_state_from_tool_result(self, tool_name: str, tool_arguments: dict, tool_result: dict) -> None:
+        """
+        State Update: Обновление state на основе результата выполнения tool
+        """
+        try:
+            # Добавляем action о результате
+            if tool_result.get("success"):
+                self.state_manager.add_action(
+                    action_type="tool_call_success",
+                    description=f"Успешно: {tool_name}",
+                    tool_name=tool_name,
+                    result=tool_result.get("result")
+                )
+                
+                # Обновляем задачи если это было действие с задачей
+                if tool_name == "create_task" and "task_id" in tool_result:
+                    self.state_manager.add_task(
+                        task_id=tool_result["task_id"],
+                        status="active",
+                        title=tool_arguments.get("title", "Новая задача")
+                    )
+                elif tool_name == "update_task_status":
+                    self.state_manager.update_task_status(
+                        task_id=tool_arguments.get("task_id"),
+                        new_status=tool_arguments.get("status")
+                    )
+            else:
+                self.state_manager.add_action(
+                    action_type="tool_call_failed",
+                    description=f"Ошибка: {tool_name}",
+                    tool_name=tool_name,
+                    error=tool_result.get("error")
+                )
+            
+        except Exception as e:
+            logger.error(f"[AGENT {self.user_id}] ошибка State Update: {e}")
+    
     async def _call_mcp_function(self, session: object, function_name: str, arguments: dict):
         """Вызывает функцию на MCP HTTP сервере"""
         try:

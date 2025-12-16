@@ -27,11 +27,34 @@ class MCPConfirmationFormatter:
                     "event_link_line": f"🔗 **Связано с событием:** {arguments.get('event_id')}\n" if arguments.get('event_id') else ""
                 }
             elif function_name == "create_event":
+                # Извлекаем дату и время из start_date и end_date
+                start_date = arguments.get("start_date")
+                end_date = arguments.get("end_date")
+                
+                # Форматируем дату 
+                event_date_formatted = self._format_datetime(start_date) if start_date else "Не указано"
+                
+                # Извлекаем время из start_date
+                event_time_formatted = "Не указано"
+                if start_date:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                        time_str = dt.strftime("%H:%M")
+                        if end_date:
+                            dt_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                            time_end_str = dt_end.strftime("%H:%M")
+                            event_time_formatted = f"{time_str} - {time_end_str}"
+                        else:
+                            event_time_formatted = time_str
+                    except:
+                        event_time_formatted = "Не указано"
+                
                 formatted_args = {
                     "title": arguments.get("title", "Без названия"),
                     "description_line": f"📝 **Описание:** {arguments.get('description', 'Не указано')}\n" if arguments.get('description') else "",
-                    "event_date_formatted": self._format_datetime(arguments.get("event_date")),
-                    "event_time_formatted": arguments.get("event_time", "Не указано"),
+                    "event_date_formatted": event_date_formatted,
+                    "event_time_formatted": event_time_formatted,
                     "event_type": arguments.get("event_type", "general").upper()
                 }
             elif function_name == "search_tasks":

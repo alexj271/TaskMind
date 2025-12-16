@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "state_version": 2,
+    "updated_at": "2025-12-16T11:42:00Z",
+    "timezone": "Europe/Berlin"
+  },
+
+  "dialog": {
+    "summary": "Пользователь управляет личными встречами и напоминаниями.",
+    "last_turns": [
+      {
+        "role": "user",
+        "content": "Перенеси встречу на пятницу"
+      },
+      {
+        "role": "assistant",
+        "content": "Хорошо, переношу."
+      }
+    ]
+  },
+
+  "tasks": {
+    "active": [
+      {
+        "task_id": "t_17",
+        "type": "meeting",
+        "title": "Встреча с клиентом",
+        "due_at": "2025-12-19T10:00:00",
+        "status": "active",
+        "flexible": true
+      }
+    ],
+    "recently_closed": [
+      {
+        "task_id": "t_12",
+        "closed_at": "2025-12-15T18:00:00"
+      }
+    ]
+  },
+
+  "context": {
+    "focus_entities": ["t_17"],
+    "intent_hint": "update_task"
+  },
+
+  "memory": {
+    "user_preferences": {
+      "language": "ru",
+      "confirmation_style": "short"
+    },
+    "long_term_summary": "Предпочитает краткие подтверждения и работает с календарными задачами."
+  },
+
+  "actions": {
+    "recent": [
+      {
+        "action_id": "a_991",
+        "type": "task_updated",
+        "task_id": "t_17",
+        "at": "2025-12-16T11:41:10Z"
+      }
+    ]
+  }
+}
